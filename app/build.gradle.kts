@@ -65,6 +65,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -130,16 +131,16 @@ android {
         }
     }
 
-    /*splits {
-        if (gradle.startParameter.taskNames.find { it.startsWith("assembleDefault") } != null) {
+    splits {
+        if (gradle.startParameter.taskNames.find { it.contains("assembleDefaultRelease") } != null) {
             abi {
                 isEnable = true
                 reset()
-                include("x86_64", "x86", "arm64-v8a", "armeabi-v7a")
-                isUniversalApk = true
+                include("arm64-v8a")
+                isUniversalApk = false
             }
         }
-    }*/
+    }
 
     applicationVariants.configureEach {
         val variant = this

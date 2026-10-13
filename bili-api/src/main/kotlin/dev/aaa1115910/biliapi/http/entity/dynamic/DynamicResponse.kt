@@ -2,8 +2,16 @@ package dev.aaa1115910.biliapi.http.entity.dynamic
 
 import dev.aaa1115910.biliapi.http.entity.user.Pendant
 import dev.aaa1115910.biliapi.http.entity.user.Vip
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonArray
 
 @Serializable
 data class DynamicData(
@@ -14,8 +22,38 @@ data class DynamicData(
     val updateBaseline: String,
     @SerialName("update_num")
     val updateNum: Int,
+    @Serializable(with = DynamicItemListSerializer::class)
     val items: List<DynamicItem> = emptyList()
 )
+
+/**
+ * 容错解析动态列表。B 站偶发在个别动态中返回 null 或缺失字段，
+ * 若整体解析，一条脏数据就会导致整个动态页加载失败。
+ * 此序列化器逐条解析，失败的条目将被跳过（打印日志），保证动态页可用。
+ */
+object DynamicItemListSerializer : KSerializer<List<DynamicItem>> {
+    private val itemSerializer = DynamicItem.serializer()
+    private val listSerializer = ListSerializer(itemSerializer)
+
+    override val descriptor: SerialDescriptor = listSerializer.descriptor
+
+    override fun deserialize(decoder: Decoder): List<DynamicItem> {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: return listSerializer.deserialize(decoder)
+        val elements = jsonDecoder.decodeJsonElement().jsonArray
+        return elements.mapNotNull { element ->
+            runCatching {
+                jsonDecoder.json.decodeFromJsonElement(itemSerializer, element)
+            }.onFailure { cause ->
+                println("skip broken dynamic item: ${cause.message}")
+            }.getOrNull()
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: List<DynamicItem>) {
+        listSerializer.serialize(encoder, value)
+    }
+}
 
 /**
  * @param basic 基础信息
@@ -42,7 +80,7 @@ data class DynamicItem(
         @SerialName("comment_type")
         val commentType: Long,
         @SerialName("like_icon")
-        val likeIcon: LikeIcon,
+        val likeIcon: LikeIcon? = null,
         @SerialName("rid_str")
         val ridStr: String
     ) {
