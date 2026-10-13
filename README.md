@@ -14,9 +14,7 @@
 [![Android Sdk Require](https://img.shields.io/badge/Android-6.0%2B-informational?logo=android)](https://developer.android.com/jetpack/androidx/versions#version-table)
 [![GitHub](https://img.shields.io/github/license/aaa1115910/bv)](https://github.com/aaa1115910/bv)
 
-**BV 无法在中国大陆地区内的智能电视上使用，如有相关使用需求请使用 [云视听小电视](https://app.bilibili.com)**
-
-**禁止在中国境内传播、宣传、分发 BV**
+**本仓库为个人开发者的本地技术验证 Demo，仅供开发调试使用。在中国大陆地区正式上线运营前，必须接入持牌方（互联网电视集成播控平台）并与哔哩哔哩达成授权合作，完成合规流程前请勿公开传播、分发本应用。**
 
 </div>
 
