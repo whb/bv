@@ -10,12 +10,15 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
+import dev.aaa1115910.bv.entity.ThemeType
+import dev.aaa1115910.bv.util.Prefs
 
 @Composable
 fun BVMobileTheme(
@@ -27,14 +30,21 @@ fun BVMobileTheme(
     val window by lazy { (context as Activity).window }
     val view = LocalView.current
     val systemUiController = rememberSystemUiController()
-    val useDarkIcons = !isSystemInDarkTheme()
+
+    val themeType = if (view.isInEditMode) ThemeType.Auto
+    else Prefs.themeTypeFlow.collectAsState(Prefs.themeType).value
+    val useDark = when (themeType) {
+        ThemeType.Auto -> darkTheme
+        ThemeType.Dark -> true
+        ThemeType.Light -> false
+    }
 
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (useDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
 
-        darkTheme -> darkColorScheme()
+        useDark -> darkColorScheme()
         else -> lightColorScheme()
     }
 
@@ -43,7 +53,7 @@ fun BVMobileTheme(
         SideEffect {
             (view.context as Activity).window.statusBarColor = colorScheme.primary.toArgb()
             WindowCompat.getInsetsController(currentWindow, view)
-                .isAppearanceLightStatusBars = darkTheme
+                .isAppearanceLightStatusBars = !useDark
         }
     }
 
@@ -52,8 +62,7 @@ fun BVMobileTheme(
         systemUiController.setNavigationBarColor(color = Color.Transparent)
         if (!view.isInEditMode) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars =
-                useDarkIcons
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !useDark
         }
     }
 

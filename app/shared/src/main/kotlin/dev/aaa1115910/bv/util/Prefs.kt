@@ -421,6 +421,6 @@ object PrefKeys {
     val prefDefaultDanmakuMaskRequest = PreferenceRequest(prefDefaultDanmakuMask, false)
     val prefEnableFfmpegEndererRequest = PreferenceRequest(prefEnableFfmpegAudioRenderer, false)
     val prefBlacklistUserRequest = PreferenceRequest(prefBlacklistUserKey, false)
-    val prefThemeTypeRequest = PreferenceRequest(prefThemeTypeKey, ThemeType.Auto.ordinal)
+    val prefThemeTypeRequest = PreferenceRequest(prefThemeTypeKey, ThemeType.Dark.ordinal)
     val prefPlayModeRequest = PreferenceRequest(prefPlayModeKey, PlayMode.Sequential.ordinal)
 }

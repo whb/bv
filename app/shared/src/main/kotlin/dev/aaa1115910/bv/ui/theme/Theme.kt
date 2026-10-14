@@ -42,6 +42,12 @@ fun BVTheme(
     val themeType = if (view.isInEditMode) ThemeType.Auto
     else Prefs.themeTypeFlow.collectAsState(Prefs.themeType).value
 
+    val useDark = forceDark || when (themeType) {
+        ThemeType.Auto -> darkTheme
+        ThemeType.Dark -> true
+        ThemeType.Light -> false
+    }
+
     val tvLightColorScheme = lightColorScheme()
     val tvDarkColorScheme = darkColorScheme(
         border = Color.White
@@ -49,16 +55,8 @@ fun BVTheme(
     val mobileLightColorScheme = androidx.compose.material3.lightColorScheme()
     val mobileDarkColorScheme = androidx.compose.material3.darkColorScheme()
 
-    val colorSchemeTv = if (forceDark) tvDarkColorScheme else when (themeType) {
-        ThemeType.Auto -> if (darkTheme) tvDarkColorScheme else tvLightColorScheme
-        ThemeType.Dark -> tvDarkColorScheme
-        ThemeType.Light -> tvLightColorScheme
-    }
-    val colorSchemeCommon = if (forceDark) mobileDarkColorScheme else when (themeType) {
-        ThemeType.Auto -> if (darkTheme) mobileDarkColorScheme else mobileLightColorScheme
-        ThemeType.Dark -> mobileDarkColorScheme
-        ThemeType.Light -> mobileLightColorScheme
-    }
+    val colorSchemeTv = if (useDark) tvDarkColorScheme else tvLightColorScheme
+    val colorSchemeCommon = if (useDark) mobileDarkColorScheme else mobileLightColorScheme
     val typographyTv =
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) android6AndBelowTypographyTv else Typography()
     val typographyCommon =
@@ -70,7 +68,7 @@ fun BVTheme(
         SideEffect {
             val window = (view.context as Activity).window
             window.statusBarColor = colorSchemeTv.primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = darkTheme
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !useDark
         }
     }
 

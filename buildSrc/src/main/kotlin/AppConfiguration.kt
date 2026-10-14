@@ -36,4 +36,4 @@ object AppConfiguration {
     }
 }
 
-fun String.exec() = String(Runtime.getRuntime().exec(this).inputStream.readBytes()).trim()
+fun String.exec() = String(ProcessBuilder(split(" ")).start().inputStream.readBytes()).trim()

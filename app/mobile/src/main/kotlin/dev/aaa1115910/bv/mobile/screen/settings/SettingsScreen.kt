@@ -117,6 +117,7 @@ enum class MobileSettings(
     val summary: String? = null
 ) {
     Play(title = "播放设置", summary = "画质编码、音频、循环模式"),
+    Appearance(title = "外观", summary = "深色/浅色主题"),
     About(title = "关于", summary = "一般不会有人点"),
     Advance(title = "更多设置", summary = "接口"),
     Debug(title = "调试", "瞅啥瞅");
