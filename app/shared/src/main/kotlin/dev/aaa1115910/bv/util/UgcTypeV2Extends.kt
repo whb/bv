@@ -4,6 +4,45 @@ import android.content.Context
 import dev.aaa1115910.biliapi.entity.ugc.UgcTypeV2
 import dev.aaa1115910.bv.R
 
+/**
+ * 获取该一级分区下的子分区列表（不含自身）。
+ * 用于分区内容页顶部的子分区筛选 chip。
+ */
+fun UgcTypeV2.getChildUgcTypes(): List<UgcTypeV2> = when (this) {
+    UgcTypeV2.Douga -> UgcTypeV2.dougaList
+    UgcTypeV2.Game -> UgcTypeV2.gameList
+    UgcTypeV2.Kichiku -> UgcTypeV2.kichikuList
+    UgcTypeV2.Music -> UgcTypeV2.musicList
+    UgcTypeV2.Dance -> UgcTypeV2.danceList
+    UgcTypeV2.Cinephile -> UgcTypeV2.cinephileList
+    UgcTypeV2.Ent -> UgcTypeV2.entList
+    UgcTypeV2.Knowledge -> UgcTypeV2.knowledgeList
+    UgcTypeV2.Tech -> UgcTypeV2.techList
+    UgcTypeV2.Information -> UgcTypeV2.informationList
+    UgcTypeV2.Food -> UgcTypeV2.foodList
+    UgcTypeV2.Shortplay -> UgcTypeV2.shortplayList
+    UgcTypeV2.Car -> UgcTypeV2.carList
+    UgcTypeV2.Fashion -> UgcTypeV2.fashionList
+    UgcTypeV2.Sports -> UgcTypeV2.sportsList
+    UgcTypeV2.Animal -> UgcTypeV2.animalList
+    UgcTypeV2.Vlog -> UgcTypeV2.vlogList
+    UgcTypeV2.Painting -> UgcTypeV2.paintingList
+    UgcTypeV2.Ai -> UgcTypeV2.aiList
+    UgcTypeV2.Home -> UgcTypeV2.homeList
+    UgcTypeV2.Outdoors -> UgcTypeV2.outdoorsList
+    UgcTypeV2.Gym -> UgcTypeV2.gymList
+    UgcTypeV2.Handmake -> UgcTypeV2.handmakeList
+    UgcTypeV2.Travel -> UgcTypeV2.travelList
+    UgcTypeV2.Rural -> UgcTypeV2.ruralList
+    UgcTypeV2.Parenting -> UgcTypeV2.parentingList
+    UgcTypeV2.Health -> UgcTypeV2.healthList
+    UgcTypeV2.Emotion -> UgcTypeV2.emotionList
+    UgcTypeV2.LifeJoy -> UgcTypeV2.lifeJoyList
+    UgcTypeV2.LifeExperience -> UgcTypeV2.lifeExperienceList
+    UgcTypeV2.Mysticism -> UgcTypeV2.mysticismList
+    else -> emptyList()
+}
+
 fun UgcTypeV2.getDisplayName(context: Context) = when (this) {
     UgcTypeV2.Douga -> R.string.ugc_type_v2_douga
     UgcTypeV2.DougaFanAnime -> R.string.ugc_type_v2_douga_fan_anime
