@@ -96,6 +96,7 @@ fun BvPlayer(
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit,
+    onToggleDanmaku: (Boolean) -> Unit,
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSizeChange: (TextUnit) -> Unit,
     onSubtitleBackgroundOpacityChange: (Float) -> Unit,
@@ -215,6 +216,28 @@ fun BvPlayer(
         mDanmakuPlayer?.updateConfig(danmakuConfig)
     }
 
+    val toggleDanmakuEnabled: (Boolean) -> Unit = { enabled ->
+        val danmakuTypes =
+            if (enabled) videoPlayerConfigData.currentDanmakuEnabledList else listOf()
+        typeFilter.clear()
+        if (!danmakuTypes.contains(DanmakuType.All)) {
+            val types = DanmakuType.entries.toMutableList()
+            types.remove(DanmakuType.All)
+            types.removeAll(danmakuTypes)
+            val filterTypes = types.mapNotNull {
+                when (it) {
+                    DanmakuType.Rolling -> DanmakuItemData.DANMAKU_MODE_ROLLING
+                    DanmakuType.Top -> DanmakuItemData.DANMAKU_MODE_CENTER_TOP
+                    DanmakuType.Bottom -> DanmakuItemData.DANMAKU_MODE_CENTER_BOTTOM
+                    else -> null
+                }
+            }
+            filterTypes.forEach { typeFilter.addFilterItem(it) }
+        }
+        danmakuConfig.updateFilter()
+        mDanmakuPlayer?.updateConfig(danmakuConfig)
+    }
+
     val updateVideoAspectRatio: () -> Unit = {
         aspectRatioValue = when (currentVideoAspectRatio) {
             VideoAspectRatio.Default -> defaultAspectRatio
@@ -275,6 +298,7 @@ fun BvPlayer(
             isError = false
             exception = null
             initDanmakuConfig()
+            if (!videoPlayerConfigData.currentDanmakuEnabled) toggleDanmakuEnabled(false)
             updateVideoAspectRatio()
 
             //reset default play speed
@@ -615,6 +639,7 @@ fun BvPlayer(
                 logger.info { "On danmaku mask change: $mask" }
                 onDanmakuMaskChange(mask)
             },
+            onToggleDanmaku = onToggleDanmaku,
             onSubtitleChange = { subtitle ->
                 onSubtitleChange(subtitle)
             },

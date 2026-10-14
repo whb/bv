@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.aaa1115910.bv.mobile.component.preferences.items.radioPreference
+import dev.aaa1115910.bv.mobile.component.preferences.items.switchPreference
 import dev.aaa1115910.bv.mobile.component.preferences.preferenceGroups
 import dev.aaa1115910.bv.mobile.theme.BVMobileTheme
 import dev.aaa1115910.bv.player.entity.Audio
@@ -50,6 +51,14 @@ fun PlayContent(
                     prefReq = PrefKeys.prefDefaultAudioRequest,
                     values = Audio.entries.associate { it.code to it.getDisplayName(context) }
                         .toSortedMap { a, b -> a.compareTo(b) }
+                )
+            },
+            "弹幕" to {
+                switchPreference(
+                    title = "显示弹幕",
+                    summary = "开启后播放视频时显示弹幕",
+                    prefReq = PrefKeys.prefDefaultDanmakuEnabledRequest,
+                    onCheckedChange = { true }
                 )
             }
         )

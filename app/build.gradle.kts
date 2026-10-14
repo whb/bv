@@ -19,6 +19,9 @@ if (AppConfiguration.googleServicesAvailable) {
     apply(plugin = gradleLibs.plugins.google.services.get().pluginId)
 }
 
+// 双架构开关：`./gradlew :app:assembleDefaultRelease -PdualAbi=true`
+// 不传该参数时保持原有行为（单 arm64-v8a 分离版）。
+val dualAbi = gradle.startParameter.projectProperties["dualAbi"] == "true"
 
 val signingProp = file(project.rootProject.file("signing.properties"))
 
@@ -48,6 +51,12 @@ android {
         versionName = AppConfiguration.versionName
         vectorDrawables {
             useSupportLibrary = true
+        }
+        // 双架构模式：用 abiFilters 把 arm64-v8a + armeabi-v7a 两种 so 打进同一个 APK
+        if (dualAbi) {
+            ndk {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            }
         }
     }
 
@@ -132,7 +141,9 @@ android {
     }
 
     splits {
-        if (gradle.startParameter.taskNames.find { it.contains("assembleDefaultRelease") } != null) {
+        // 单架构模式（默认）：仅打 arm64-v8a 分离包
+        // 双架构模式（-PdualAbi=true）：不启用 splits，由 defaultConfig.ndk.abiFilters 决定
+        if (!dualAbi && gradle.startParameter.taskNames.find { it.contains("assembleDefaultRelease") } != null) {
             abi {
                 isEnable = true
                 reset()
@@ -146,7 +157,8 @@ android {
         val variant = this
         outputs.configureEach {
             (this as ApkVariantOutputImpl).apply {
-                val abi = this.filters.find { it.filterType == "ABI" }?.identifier ?: "universal"
+                val abi = this.filters.find { it.filterType == "ABI" }?.identifier
+                    ?: if (dualAbi) "arm64_v7a" else "universal"
                 outputFileName =
                     "BV_${AppConfiguration.versionCode}_${AppConfiguration.versionName}.${variant.buildType.name}_${variant.flavorName}_$abi.apk"
                 versionNameOverride =

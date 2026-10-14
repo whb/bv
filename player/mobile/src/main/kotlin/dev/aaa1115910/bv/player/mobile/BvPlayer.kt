@@ -205,6 +205,7 @@ fun BvPlayer(
             isError = false
             exception = null
             initDanmakuConfig()
+            if (!videoPlayerConfigData.currentDanmakuEnabled) toggleDanmakuEnabled(false)
 
             updateVideoAspectRatio()
             videoPlayer.start()

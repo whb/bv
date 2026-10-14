@@ -54,6 +54,7 @@
     <string name="video_player_menu_danmaku_type_cross">滚动弹幕</string>
     <string name="video_player_menu_danmaku_type_top">顶部弹幕</string>
     <string name="video_player_menu_nav_danmaku">弹幕设置</string>
+    <string name="video_player_menu_danmaku_enable">弹幕</string>
     <string name="video_player_menu_nav_others">其它设置</string>
     <string name="video_player_menu_nav_picture">画面音频</string>
     <string name="video_player_menu_nav_subtitle">字幕设置</string>

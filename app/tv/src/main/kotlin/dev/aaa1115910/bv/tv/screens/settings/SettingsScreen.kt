@@ -42,6 +42,7 @@ import dev.aaa1115910.bv.R
 import dev.aaa1115910.bv.tv.screens.settings.content.AboutSetting
 import dev.aaa1115910.bv.tv.screens.settings.content.ApiSetting
 import dev.aaa1115910.bv.tv.screens.settings.content.AudioSetting
+import dev.aaa1115910.bv.tv.screens.settings.content.PlayerSetting
 import dev.aaa1115910.bv.tv.screens.settings.content.InfoSetting
 import dev.aaa1115910.bv.tv.screens.settings.content.NetworkSetting
 import dev.aaa1115910.bv.tv.screens.settings.content.OtherSetting
@@ -164,6 +165,7 @@ enum class SettingsMenuNavItem(private val strRes: Int) {
     Resolution(R.string.settings_item_resolution),
     VideoCodec(R.string.settings_item_codec),
     Audio(R.string.settings_item_audio),
+    Player(R.string.settings_item_player),
     PlayerType(R.string.settings_item_player_type),
     UI(R.string.settings_item_ui),
     Api(R.string.settings_item_api),
@@ -198,6 +200,7 @@ fun SettingContent(
                 SettingsMenuNavItem.About -> AboutSetting()
                 SettingsMenuNavItem.VideoCodec -> VideoCodecSetting()
                 SettingsMenuNavItem.Audio -> AudioSetting()
+                SettingsMenuNavItem.Player -> PlayerSetting()
                 SettingsMenuNavItem.Other -> OtherSetting()
                 SettingsMenuNavItem.Network -> NetworkSetting()
                 SettingsMenuNavItem.PlayerType -> PlayerTypeSetting()

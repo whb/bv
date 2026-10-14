@@ -197,6 +197,9 @@
     <string name="settings_item_resolution">默认分辨率</string>
     <string name="settings_item_storage">存储管理</string>
     <string name="settings_item_ui">界面设置</string>
+    <string name="settings_item_player">播放设置</string>
+    <string name="setting_danmaku_enabled">弹幕</string>
+    <string name="setting_danmaku_enabled_summary">开启后播放视频时显示弹幕</string>
     <string name="settings_network_enable_proxy_text">使用自定义代理服务器获取部分视频播放地址</string>
     <string name="settings_network_enable_proxy_title">启用代理</string>
     <string name="settings_network_prefer_official_cdn_text">优先使用获取到的官方 CDN</string>
