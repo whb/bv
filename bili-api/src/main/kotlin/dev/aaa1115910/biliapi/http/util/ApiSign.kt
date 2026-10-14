@@ -73,7 +73,8 @@ suspend fun HttpRequestBuilder.encWbi() {
         mixinKey.substring(0, 32)
     }
 
-    if (BiliHttpApi.wbiImgKey == null || BiliHttpApi.wbiSubKey == null) BiliHttpApi.updateWbi()
+    // updateWbi() 内部会判断 keys 是否仍在有效期，新鲜则立即返回，不会重复请求
+    BiliHttpApi.updateWbi()
     require(BiliHttpApi.wbiImgKey != null && BiliHttpApi.wbiSubKey != null) { "Wbi keys can't be null!" }
     val mixinKey = getMixinKey(BiliHttpApi.wbiImgKey + BiliHttpApi.wbiSubKey)
 

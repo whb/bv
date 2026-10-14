@@ -94,7 +94,10 @@ import io.ktor.utils.io.InternalAPI
 import io.ktor.utils.io.jvm.javaio.toInputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -115,6 +118,7 @@ object BiliHttpApi {
     var wbiImgKey: String? = null
     var wbiSubKey: String? = null
     private var wbiLastRefreshDate = 0L
+    private val wbiUpdateMutex = Mutex()
 
     init {
         createClient()
@@ -1372,26 +1376,37 @@ object BiliHttpApi {
 
     /**
      * 更新 wbi keys
+     *
+     * keys 为空或超过 2 小时未更新时才重新获取；获取失败会带退避重试，
+     * 避免冷启动时首个 wbi 请求因拿不到 keys 而失败（表现为页面空白）。
+     *
+     * @return 当前是否拥有可用的 wbi keys
      */
-    suspend fun updateWbi() {
-        val needToUpdate =
-            wbiImgKey == null || wbiSubKey == null || System.currentTimeMillis() - wbiLastRefreshDate < 2 * 60 * 60 * 1000L
-        if (!needToUpdate) {
-            println("Skip update wbi keys")
-            return
+    suspend fun updateWbi(): Boolean = wbiUpdateMutex.withLock {
+        val stillFresh = wbiImgKey != null && wbiSubKey != null &&
+                System.currentTimeMillis() - wbiLastRefreshDate < 2 * 60 * 60 * 1000L
+        if (stillFresh) {
+            return@withLock true
         }
 
         println("Updating wbi keys...")
-        runCatching {
-            val wbiData = getWebInterfaceNav().data!!.wbiImg
-            wbiImgKey = wbiData.getImgKey()
-            wbiSubKey = wbiData.getSubKey()
-            wbiLastRefreshDate = System.currentTimeMillis()
-        }.onSuccess {
-            println("Update wbi data success")
-        }.onFailure {
-            println("Update wbi data failed: ${it.stackTraceToString()}")
+        var success = false
+        repeat(3) { attempt ->
+            if (success) return@repeat
+            runCatching {
+                val wbiData = getWebInterfaceNav().data!!.wbiImg
+                wbiImgKey = wbiData.getImgKey()
+                wbiSubKey = wbiData.getSubKey()
+                wbiLastRefreshDate = System.currentTimeMillis()
+            }.onSuccess {
+                println("Update wbi data success")
+                success = true
+            }.onFailure {
+                println("Update wbi data failed (attempt ${attempt + 1}/3): ${it.stackTraceToString()}")
+                if (attempt < 2) delay(300L * (attempt + 1))
+            }
         }
+        success
     }
 
     /**
