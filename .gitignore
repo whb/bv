@@ -12,3 +12,5 @@
 /.idea/jarRepositories.xml
 /.idea/migrations.xml
 /.idea/codeStyles/
+# material-symbols KSP 图标 XML 本地缓存（避免重编反复访问 GitHub raw 超时）
+.material-symbols-cache/
