@@ -61,7 +61,7 @@ fun UISetting(
 
     var showDensityDialog by remember { mutableStateOf(false) }
     var showThemeTypeDialog by remember { mutableStateOf(false) }
-    val density by Prefs.densityFlow.collectAsState(context.resources.displayMetrics.widthPixels / 960f)
+    val density by Prefs.densityFlow.collectAsState(context.resources.displayMetrics.widthPixels / 1280f)
     val themeType by Prefs.themeTypeFlow.collectAsState(Prefs.themeType)
 
     Box(modifier = modifier) {
@@ -124,7 +124,7 @@ private fun UIDensityDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
-    val defaultDensity by remember { mutableFloatStateOf(context.resources.displayMetrics.widthPixels / 960f) }
+    val defaultDensity by remember { mutableFloatStateOf(context.resources.displayMetrics.widthPixels / 1280f) }
 
     LaunchedEffect(show) {
         if (show) focusRequester.requestFocus(scope)

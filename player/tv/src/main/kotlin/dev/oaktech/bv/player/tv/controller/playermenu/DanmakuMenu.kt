@@ -35,15 +35,6 @@ import dev.oaktech.bv.player.tv.controller.playermenu.component.CheckBoxMenuList
 import dev.oaktech.bv.player.tv.controller.playermenu.component.MenuListItem
 import dev.oaktech.bv.player.tv.controller.playermenu.component.RadioMenuList
 import dev.oaktech.bv.player.tv.controller.playermenu.component.StepLessMenuItem
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.res.stringResource
-import androidx.tv.material3.ListItem
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Switch
-import androidx.tv.material3.SwitchDefaults
-import androidx.tv.material3.Text
-import dev.oaktech.bv.player.shared.R
 import dev.oaktech.bv.util.ifElse
 import java.text.NumberFormat
 
@@ -55,7 +46,6 @@ fun DanmakuMenuList(
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit,
-    onToggleDanmaku: (Boolean) -> Unit,
     onFocusStateChange: (MenuFocusState) -> Unit
 ) {
     val context = LocalContext.current
@@ -190,13 +180,6 @@ fun DanmakuMenuList(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(8.dp)
         ) {
-            item {
-                DanmakuEnableSwitchItem(
-                    enabled = videoPlayerConfigData.currentDanmakuEnabled,
-                    onToggle = onToggleDanmaku,
-                    onFocusStateChange = onFocusStateChange
-                )
-            }
             itemsIndexed(VideoPlayerDanmakuMenuItem.entries) { index, item ->
                 MenuListItem(
                     modifier = Modifier
@@ -212,39 +195,4 @@ fun DanmakuMenuList(
             }
         }
     }
-}
-
-@Composable
-private fun DanmakuEnableSwitchItem(
-    modifier: Modifier = Modifier,
-    enabled: Boolean,
-    onToggle: (Boolean) -> Unit,
-    onFocusStateChange: (MenuFocusState) -> Unit
-) {
-    var hasFocus by remember { mutableStateOf(false) }
-    ListItem(
-        modifier = modifier
-            .fillMaxWidth()
-            .onFocusChanged {
-                hasFocus = it.hasFocus
-                if (it.hasFocus) onFocusStateChange(MenuFocusState.Menu)
-            },
-        selected = hasFocus,
-        onClick = { onToggle(!enabled) },
-        headlineContent = {
-            Text(text = stringResource(R.string.video_player_menu_danmaku_enable))
-        },
-        trailingContent = {
-            Switch(
-                checked = enabled,
-                onCheckedChange = null,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.inverseSurface,
-                    checkedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        }
-    )
 }

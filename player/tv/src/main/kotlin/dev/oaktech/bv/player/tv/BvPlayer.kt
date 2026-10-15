@@ -96,7 +96,6 @@ fun BvPlayer(
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit,
-    onToggleDanmaku: (Boolean) -> Unit,
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSizeChange: (TextUnit) -> Unit,
     onSubtitleBackgroundOpacityChange: (Float) -> Unit,
@@ -639,7 +638,6 @@ fun BvPlayer(
                 logger.info { "On danmaku mask change: $mask" }
                 onDanmakuMaskChange(mask)
             },
-            onToggleDanmaku = onToggleDanmaku,
             onSubtitleChange = { subtitle ->
                 onSubtitleChange(subtitle)
             },

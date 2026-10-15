@@ -46,7 +46,6 @@ import dev.oaktech.bv.player.entity.VideoListItem
 import dev.oaktech.bv.player.seekbar.SeekMoveState
 import dev.oaktech.bv.player.shared.BuildConfig
 import dev.oaktech.bv.player.shared.R
-import dev.oaktech.bv.util.countDownTimer
 import dev.oaktech.bv.util.fInfo
 import dev.oaktech.bv.util.toast
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -75,7 +74,6 @@ fun VideoPlayerController(
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit,
-    onToggleDanmaku: (Boolean) -> Unit,
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSizeChange: (TextUnit) -> Unit,
     onSubtitleBackgroundOpacityChange: (Float) -> Unit,
@@ -95,7 +93,6 @@ fun VideoPlayerController(
     var showListController by remember { mutableStateOf(false) }
     var showMenuController by remember { mutableStateOf(false) }
     var showSeekController by remember { mutableStateOf(false) }
-    var showInfo by remember { mutableStateOf(false) }
     val showClickableControllers by remember { derivedStateOf { showListController || showMenuController } }
 
     var lastPressBack by remember { mutableLongStateOf(0L) }
@@ -105,8 +102,6 @@ fun VideoPlayerController(
     var seekChangeCount by remember { mutableIntStateOf(0) }
     var lastSeekChangeTime by remember { mutableLongStateOf(0L) }
     var moveState by remember { mutableStateOf(SeekMoveState.Idle) }
-
-    var hideVideoInfoTimer: CountDownTimer? by remember { mutableStateOf(null) }
 
     val openSeekController = {
         if (!showSeekController) goTime = videoPlayerSeekData.position
@@ -222,14 +217,6 @@ fun VideoPlayerController(
                     Key.DirectionDown -> {
                         if (it.type == KeyEventType.KeyDown) return@onPreviewKeyEvent true
                         logger.info { "[${it.key} press]" }
-                        showInfo = !showInfo
-                        if (showInfo) {
-                            hideVideoInfoTimer = countDownTimer(3000, 1000, "hideVideoInfoTimer") {
-                                showInfo = false
-                            }
-                        } else {
-                            hideVideoInfoTimer?.cancel()
-                        }
                         return@onPreviewKeyEvent true
                     }
 
@@ -333,10 +320,6 @@ fun VideoPlayerController(
         BottomSubtitle()
         SkipTips()
         PlayStateTips()
-        ControllerVideoInfo(
-            show = showInfo,
-            onHideInfo = { showInfo = false }
-        )
         SeekController(
             show = showSeekController,
             goTime = goTime,
@@ -358,7 +341,6 @@ fun VideoPlayerController(
             onDanmakuOpacityChange = onDanmakuOpacityChange,
             onDanmakuAreaChange = onDanmakuAreaChange,
             onDanmakuMaskChange = onDanmakuMaskChange,
-            onToggleDanmaku = onToggleDanmaku,
             onSubtitleChange = onSubtitleChange,
             onSubtitleSizeChange = onSubtitleSizeChange,
             onSubtitleBackgroundOpacityChange = onSubtitleBackgroundOpacityChange,

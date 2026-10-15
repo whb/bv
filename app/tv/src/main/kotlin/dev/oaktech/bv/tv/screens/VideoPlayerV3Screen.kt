@@ -176,10 +176,6 @@ fun VideoPlayerV3Screen(
                 Prefs.defaultDanmakuMask = mask
                 playerViewModel.currentDanmakuMask = mask
             },
-            onToggleDanmaku = { enabled ->
-                Prefs.defaultDanmakuEnabled = enabled
-                playerViewModel.currentDanmakuEnabled = enabled
-            },
             onSubtitleChange = { subtitle ->
                 playerViewModel.loadSubtitle(subtitle.id)
             },

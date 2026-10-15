@@ -402,8 +402,8 @@ object PrefKeys {
     val prefDensityRequest =
         PreferenceRequest(
             prefDensityKey,
-            runCatching { BVApp.context.resources.displayMetrics.widthPixels / 960f }
-                .getOrDefault(2f)
+            runCatching { BVApp.context.resources.displayMetrics.widthPixels / 1280f }
+                .getOrDefault(1.5f)
         )
 
     @Suppress("KotlinConstantConditions")

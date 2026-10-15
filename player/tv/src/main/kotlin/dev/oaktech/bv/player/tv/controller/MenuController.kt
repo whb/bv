@@ -74,7 +74,6 @@ fun MenuController(
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit = {},
-    onToggleDanmaku: (Boolean) -> Unit = {},
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSizeChange: (TextUnit) -> Unit,
     onSubtitleBackgroundOpacityChange: (Float) -> Unit,
@@ -112,7 +111,6 @@ fun MenuController(
                 onDanmakuOpacityChange = onDanmakuOpacityChange,
                 onDanmakuAreaChange = onDanmakuAreaChange,
                 onDanmakuMaskChange = onDanmakuMaskChange,
-                onToggleDanmaku = onToggleDanmaku,
                 onSubtitleChange = onSubtitleChange,
                 onSubtitleSizeChange = onSubtitleSizeChange,
                 onSubtitleBackgroundOpacityChange = onSubtitleBackgroundOpacityChange,
@@ -137,7 +135,6 @@ fun MenuController(
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit = {},
-    onToggleDanmaku: (Boolean) -> Unit = {},
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSizeChange: (TextUnit) -> Unit,
     onSubtitleBackgroundOpacityChange: (Float) -> Unit,
@@ -175,7 +172,6 @@ fun MenuController(
                     onDanmakuOpacityChange = onDanmakuOpacityChange,
                     onDanmakuAreaChange = onDanmakuAreaChange,
                     onDanmakuMaskChange = onDanmakuMaskChange,
-                    onToggleDanmaku = onToggleDanmaku,
                     onFocusStateChange = { focusState = it },
                     onSubtitleChange = onSubtitleChange,
                     onSubtitleSizeChange = onSubtitleSizeChange,
@@ -219,7 +215,6 @@ private fun MenuList(
     onDanmakuOpacityChange: (Float) -> Unit,
     onDanmakuAreaChange: (Float) -> Unit,
     onDanmakuMaskChange: (Boolean) -> Unit = {},
-    onToggleDanmaku: (Boolean) -> Unit = {},
     onSubtitleChange: (Subtitle) -> Unit,
     onSubtitleSizeChange: (TextUnit) -> Unit,
     onSubtitleBackgroundOpacityChange: (Float) -> Unit,
@@ -250,8 +245,7 @@ private fun MenuList(
                     onDanmakuOpacityChange = onDanmakuOpacityChange,
                     onDanmakuAreaChange = onDanmakuAreaChange,
                     onFocusStateChange = onFocusStateChange,
-                    onDanmakuMaskChange = onDanmakuMaskChange,
-                    onToggleDanmaku = onToggleDanmaku
+                    onDanmakuMaskChange = onDanmakuMaskChange
                 )
             }
 
