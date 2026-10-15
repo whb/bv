@@ -1,7 +1,7 @@
 import java.io.File
 
 object AppConfiguration {
-    const val appId = "dev.aaa1115910.bv"
+    const val appId = "dev.oaktech.bv"
     const val compileSdk = 36
     const val minSdk = 23
     const val targetSdk = 36
@@ -20,7 +20,7 @@ object AppConfiguration {
     const val libVLCVersion = "3.0.18"
     var googleServicesAvailable = true
     const val blacklistUrl =
-        "https://raw.githubusercontent.com/aaa1115910/bv-blacklist/main/blacklist.bin"
+        "https://raw.githubusercontent.com/whb/bv-blacklist/main/blacklist.bin"
 
     init {
         initConfigurations()

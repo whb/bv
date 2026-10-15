@@ -1,0 +1,88 @@
+package dev.oaktech.bv.tv.screens.main.pgc
+
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.List
+import androidx.compose.material.icons.rounded.QuestionMark
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import dev.oaktech.biliapi.entity.pgc.PgcType
+import dev.oaktech.bv.R
+import dev.oaktech.bv.tv.activities.pgc.PgcIndexActivity
+import dev.oaktech.bv.ui.theme.BVTheme
+import dev.oaktech.bv.viewmodel.pgc.PgcVarietyViewModel
+import org.koin.androidx.compose.koinViewModel
+
+@Composable
+fun VarietyContent(
+    modifier: Modifier = Modifier,
+    lazyListState: LazyListState,
+    pgcViewModel: PgcVarietyViewModel = koinViewModel()
+) {
+    val context = LocalContext.current
+
+    val onOpenIndex: () -> Unit = {
+        PgcIndexActivity.actionStart(context = context, pgcType = PgcType.Variety)
+    }
+
+    PgcScaffold(
+        lazyListState = lazyListState,
+        pgcViewModel = pgcViewModel,
+        pgcType = PgcType.Variety,
+        featureButtons = {
+            VarietyFeatureButtons(
+                modifier = Modifier.padding(vertical = 24.dp),
+                onOpenIndex = onOpenIndex
+            )
+        }
+    )
+}
+
+@Composable
+private fun VarietyFeatureButtons(
+    modifier: Modifier = Modifier,
+    onOpenIndex: () -> Unit
+) {
+    val buttons = listOf(
+        Triple(
+            stringResource(R.string.anime_home_button_index),
+            Icons.AutoMirrored.Rounded.List,
+            onOpenIndex
+        ),
+        Triple(
+            stringResource(R.string.pgc_home_button_unknown),
+            Icons.Rounded.QuestionMark,
+            showPlaceholderToast
+        ),
+        Triple(
+            stringResource(R.string.pgc_home_button_unknown),
+            Icons.Rounded.QuestionMark,
+            showPlaceholderToast
+        ),
+        Triple(
+            stringResource(R.string.pgc_home_button_unknown),
+            Icons.Rounded.QuestionMark,
+            showPlaceholderToast
+        )
+    )
+    PgcFeatureButtons(
+        modifier = modifier,
+        buttons = buttons
+    )
+}
+
+@Preview(device = "id:tv_1080p")
+@Composable
+private fun VarietyFeatureButtonsPreview() {
+    BVTheme {
+        VarietyFeatureButtons(
+            modifier = Modifier,
+            onOpenIndex = {},
+        )
+    }
+}

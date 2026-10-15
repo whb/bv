@@ -6,13 +6,13 @@
 
 ~~Bug Video~~
 
-[![GitHub Release Release](https://img.shields.io/endpoint?url=https%3A%2F%2Fbadge.versions.bv.aaa1115910.dev%2Fgithub%3Fprerelease%3Dfalse)](https://github.com/aaa1115910/bv/releases?q=prerelease%3Afalse)
-[![GitHub Release Pre-Release](https://img.shields.io/endpoint?url=https%3A%2F%2Fbadge.versions.bv.aaa1115910.dev%2Fgithub%3Fprerelease%3Dtrue)](https://github.com/aaa1115910/bv/releases?q=prerelease%3Atrue)
+[![GitHub Release Release](https://img.shields.io/endpoint?url=https%3A%2F%2Fbadge.versions.bv.aaa1115910.dev%2Fgithub%3Fprerelease%3Dfalse)](https://github.com/whb/bv/releases?q=prerelease%3Afalse)
+[![GitHub Release Pre-Release](https://img.shields.io/endpoint?url=https%3A%2F%2Fbadge.versions.bv.aaa1115910.dev%2Fgithub%3Fprerelease%3Dtrue)](https://github.com/whb/bv/releases?q=prerelease%3Atrue)
 
-[![Workflow Release](https://github.com/aaa1115910/bv/actions/workflows/release.yml/badge.svg)](https://github.com/aaa1115910/bv/actions/workflows/release.yml)
-[![Workflow Alpha](https://github.com/aaa1115910/bv/actions/workflows/alpha.yml/badge.svg)](https://github.com/aaa1115910/bv/actions/workflows/alpha.yml)
+[![Workflow Release](https://github.com/whb/bv/actions/workflows/release.yml/badge.svg)](https://github.com/whb/bv/actions/workflows/release.yml)
+[![Workflow Alpha](https://github.com/whb/bv/actions/workflows/alpha.yml/badge.svg)](https://github.com/whb/bv/actions/workflows/alpha.yml)
 [![Android Sdk Require](https://img.shields.io/badge/Android-6.0%2B-informational?logo=android)](https://developer.android.com/jetpack/androidx/versions#version-table)
-[![GitHub](https://img.shields.io/github/license/aaa1115910/bv)](https://github.com/aaa1115910/bv)
+[![GitHub](https://img.shields.io/github/license/whb/bv)](https://github.com/whb/bv)
 
 **本仓库为个人开发者的本地技术验证 Demo，仅供开发调试使用。在中国大陆地区正式上线运营前，必须接入持牌方（互联网电视集成播控平台）并与哔哩哔哩达成授权合作，完成合规流程前请勿公开传播、分发本应用。**
 
@@ -36,11 +36,11 @@ BV ~~(Bug Video)~~ 是一款 [哔哩哔哩](https://www.bilibili.com) 的第三�
 
 ### Release
 
-- [Github Release](https://github.com/aaa1115910/bv/releases?q=prerelease%3Afalse)
+- [Github Release](https://github.com/whb/bv/releases?q=prerelease%3Afalse)
 
 ### Alpha
 
-- [Github Release](https://github.com/aaa1115910/bv/releases?q=prerelease%3Atrue)
+- [Github Release](https://github.com/whb/bv/releases?q=prerelease%3Atrue)
 
 ## License
 
