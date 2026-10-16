@@ -36,7 +36,6 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.DrawerValue
 import androidx.tv.material3.Icon
 import androidx.tv.material3.NavigationDrawer
-import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.NavigationDrawerScope
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
@@ -90,7 +89,7 @@ fun NavigationDrawerScope.DrawerContent(
         verticalArrangement = Arrangement.SpaceBetween
     ) {
 
-        NavigationDrawerItem(
+        BvNavigationDrawerItem(
             modifier = Modifier,
             onClick = {
                 if (isLogin) {
@@ -146,7 +145,7 @@ fun NavigationDrawerScope.DrawerContent(
                 DrawerItem.PGC,
             ).forEach { item ->
                 item {
-                    NavigationDrawerItem(
+                    BvNavigationDrawerItem(
                         modifier = Modifier
                             .onFocusChanged { if (it.hasFocus) selectedItem = item }
                             .ifElse(
@@ -167,7 +166,7 @@ fun NavigationDrawerScope.DrawerContent(
                 }
             }
         }
-        NavigationDrawerItem(
+        BvNavigationDrawerItem(
             modifier = Modifier,
             onClick = onOpenSettings,
             selected = false,
