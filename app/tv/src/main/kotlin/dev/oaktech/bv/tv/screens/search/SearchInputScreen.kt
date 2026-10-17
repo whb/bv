@@ -37,8 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
@@ -192,6 +194,8 @@ private fun SearchInput(
     enableProxy: Boolean,
     onEnableProxyChange: (Boolean) -> Unit
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+
     Box(
         modifier = modifier
             .width(280.dp)
@@ -204,7 +208,9 @@ private fun SearchInput(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             OutlinedTextField(
-                modifier = Modifier.width(258.dp),
+                modifier = Modifier
+                    .width(258.dp)
+                    .onFocusEvent { if (it.isFocused) keyboardController?.hide() },
                 value = searchKeyword,
                 onValueChange = onSearchKeywordChange,
                 maxLines = 1,
