@@ -27,6 +27,7 @@ import dev.oaktech.bv.entity.carddata.VideoCardData
 import dev.oaktech.bv.entity.proxy.ProxyArea
 import dev.oaktech.bv.tv.activities.video.VideoInfoActivity
 import dev.oaktech.bv.tv.component.videocard.SmallVideoCard
+import dev.oaktech.bv.tv.screens.main.ContentColumnWidth
 import dev.oaktech.bv.tv.screens.main.ugc.gridItems
 import dev.oaktech.bv.viewmodel.home.DynamicViewModel
 import kotlinx.coroutines.Dispatchers
@@ -74,7 +75,7 @@ fun DynamicsScreen(
                 data = dynamicViewModel.dynamicVideoList,
                 columnCount = 4,
                 modifier = Modifier
-                    .width(880.dp)
+                    .width(ContentColumnWidth)
                     .padding(horizontal = 24.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
                 itemContent = { index, item ->

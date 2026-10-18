@@ -62,6 +62,7 @@ import dev.oaktech.bv.entity.carddata.SeasonCardData
 import dev.oaktech.bv.entity.proxy.ProxyArea
 import dev.oaktech.bv.tv.activities.video.SeasonInfoActivity
 import dev.oaktech.bv.ui.theme.BVTheme
+import dev.oaktech.bv.tv.screens.main.ContentColumnWidth
 import dev.oaktech.bv.util.ImageSize
 import dev.oaktech.bv.util.resizedImageUrl
 import dev.oaktech.bv.util.toast
@@ -95,7 +96,7 @@ fun PgcScaffold(
             ) {
                 PgcCarousel(
                     modifier = Modifier
-                        .width(880.dp)
+                        .width(ContentColumnWidth)
                         .padding(32.dp, 0.dp)
                         .focusRequester(carouselFocusRequester),
                     data = carouselItems,

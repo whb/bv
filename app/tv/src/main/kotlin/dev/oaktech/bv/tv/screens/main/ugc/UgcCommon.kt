@@ -38,6 +38,7 @@ import dev.oaktech.bv.entity.carddata.VideoCardData
 import dev.oaktech.bv.tv.activities.video.VideoInfoActivity
 import dev.oaktech.bv.tv.component.UgcCarousel
 import dev.oaktech.bv.tv.component.videocard.SmallVideoCard
+import dev.oaktech.bv.tv.screens.main.ContentColumnWidth
 import dev.oaktech.bv.util.fInfo
 import dev.oaktech.bv.util.toast
 import dev.oaktech.bv.viewmodel.ugc.UgcViewModel
@@ -81,7 +82,7 @@ fun UgcRegionScaffold(
                 ) {
                     UgcCarousel(
                         modifier = Modifier
-                            .width(880.dp)
+                            .width(ContentColumnWidth)
                             .padding(32.dp, 0.dp),
                         data = ugcViewModel.carouselItems,
                         onClick = { item ->
@@ -113,7 +114,7 @@ fun UgcRegionScaffold(
             data = ugcViewModel.ugcItems,
             columnCount = 4,
             modifier = Modifier
-                .width(880.dp)
+                .width(ContentColumnWidth)
                 .padding(horizontal = 24.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(24.dp),
             itemContent = { index, item ->
