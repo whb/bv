@@ -232,7 +232,7 @@ fun SettingsMenuButton(
                     horizontal = 16.dp
                 ),
                 text = text,
-                style = MaterialTheme.typography.titleLarge
+                style = MaterialTheme.typography.bodyLarge
             )
         }
     )

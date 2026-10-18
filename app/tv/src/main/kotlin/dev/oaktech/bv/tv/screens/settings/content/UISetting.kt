@@ -82,16 +82,16 @@ fun UISetting(
             ) {
                 item {
                     SettingListItem(
-                        title = stringResource(R.string.settings_ui_density_title),
-                        supportText = stringResource(R.string.settings_ui_density_text),
-                        onClick = { showDensityDialog = true }
+                        title = stringResource(R.string.settings_ui_theme_type_title),
+                        supportText = stringResource(R.string.settings_ui_theme_type_text),
+                        onClick = { showThemeTypeDialog = true }
                     )
                 }
                 item {
                     SettingListItem(
-                        title = stringResource(R.string.settings_ui_theme_type_title),
-                        supportText = stringResource(R.string.settings_ui_theme_type_text),
-                        onClick = { showThemeTypeDialog = true }
+                        title = stringResource(R.string.settings_ui_density_title),
+                        supportText = stringResource(R.string.settings_ui_density_text),
+                        onClick = { showDensityDialog = true }
                     )
                 }
             }
