@@ -102,7 +102,7 @@ class AppQrLoginViewModel(
                     )
 
                     timer.cancel()
-                    BlacklistUtil.checkUid(Prefs.uid)
+                    // BlacklistUtil.checkUid(Prefs.uid)  // [已停用黑名单功能 2026-10-18]
                     userRepository.addUser(authData)
                 }
 

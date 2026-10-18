@@ -55,10 +55,11 @@ class BVApp : Application() {
         context = this.applicationContext
         HandroidLoggerAdapter.DEBUG = BuildConfig.DEBUG
         dataStoreManager = DataStoreManager(applicationContext.dataStore)
-        if (Prefs.blacklistUser) {
-            R.string.blacklist_user_toast.toast(context)
-            return
-        }
+        // [已停用黑名单功能 2026-10-18] 原逻辑：已被拉黑用户启动时弹 toast 并直接 return
+        // if (Prefs.blacklistUser) {
+        //     R.string.blacklist_user_toast.toast(context)
+        //     return
+        // }
         koinApplication = startKoin {
             androidLogger(if (BuildConfig.DEBUG) Level.ERROR else Level.NONE)
             androidContext(this@BVApp)
@@ -72,7 +73,7 @@ class BVApp : Application() {
         instance = this
         updateMigration()
         HttpServer.startServer()
-        updateBlacklist()
+        // updateBlacklist()  // [已停用黑名单功能 2026-10-18]
     }
 
     private fun initFirebase() {
