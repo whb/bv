@@ -19,10 +19,14 @@ if (AppConfiguration.googleServicesAvailable) {
     apply(plugin = gradleLibs.plugins.google.services.get().pluginId)
 }
 
-// 双架构开关：`./gradlew :app:assembleDefaultRelease -PdualAbi=true`
-// 作用范围：仅影响 release。release 不传该参数 → 仅 armeabi-v7a；传了该参数 → arm64-v8a + armeabi-v7a。
+// 架构参数开关（仅影响 release）：
+//   不传参数            → 仅 armeabi-v7a
+//   -PdualAbi=true      → arm64-v8a + armeabi-v7a
+//   -Puniversal=true    → 全部 4 种架构（x86_64 / x86 / arm64-v8a / armeabi-v7a）
 // 非 release（如 debug）无论是否传参，都打全部 4 种架构。
+// universal 优先于 dualAbi（全部架构已包含双架构）。
 val dualAbi = gradle.startParameter.projectProperties["dualAbi"] == "true"
+val universal = gradle.startParameter.projectProperties["universal"] == "true"
 
 // 全部架构（非 release 默认发布）
 val allAbis = listOf("x86_64", "x86", "arm64-v8a", "armeabi-v7a")
@@ -61,7 +65,7 @@ android {
             useSupportLibrary = true
         }
         // ndk.abiFilters 按 buildType 在下方 buildTypes 中设定：
-        // release 限制为 armeabi-v7a（-PdualAbi 时加 arm64-v8a）；debug 等不设 → 默认全部 4 种架构
+        // release 限制为 armeabi-v7a（-PdualAbi 加 arm64-v8a / -Puniversal 打全部 4 种）；debug 等不设 → 默认全部 4 种架构
     }
 
     flavorDimensions.add("channel")
@@ -87,9 +91,13 @@ android {
             configure<CrashlyticsExtension> {
                 mappingFileUploadEnabled = AppConfiguration.googleServicesAvailable
             }
-            // 架构：release 默认仅 armeabi-v7a；传 -PdualAbi 则额外包含 arm64-v8a
+            // 架构：release 默认仅 armeabi-v7a；-PdualAbi 加 arm64-v8a；-Puniversal 打全部 4 种
             ndk {
-                abiFilters += if (dualAbi) listOf("arm64-v8a", "armeabi-v7a") else listOf("armeabi-v7a")
+                abiFilters += when {
+                    universal -> allAbis
+                    dualAbi -> listOf("arm64-v8a", "armeabi-v7a")
+                    else -> listOf("armeabi-v7a")
+                }
             }
         }
         debug {
@@ -146,6 +154,7 @@ android {
         // 架构标签仅用于文件名，真实架构由 buildTypes.release.ndk.abiFilters 决定
         val abiLabel = when {
             variant.buildType.name != "release" -> "universal"      // 4 种全打
+            universal -> "universal"                                // -Puniversal：4 种全打
             dualAbi -> "arm64_armeabi"                             // arm64-v8a + armeabi-v7a
             else -> "armeabi"                                       // 仅 armeabi-v7a
         }
