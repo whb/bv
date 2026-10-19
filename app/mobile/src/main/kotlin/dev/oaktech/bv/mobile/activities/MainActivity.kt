@@ -1,8 +1,5 @@
 package dev.oaktech.bv.mobile.activities
 
-import android.content.ComponentName
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -15,23 +12,10 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
 
-        if (isTvDevice()) {
-            startActivity(
-                Intent().setComponent(
-                    ComponentName(packageName, "dev.oaktech.bv.tv.activities.MainActivity")
-                )
-            )
-            finish()
-            return
-        }
-
         setContent {
             BVMobileTheme {
                 MobileMainScreen()
             }
         }
     }
-
-    private fun isTvDevice(): Boolean =
-        packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
 }

@@ -9,7 +9,7 @@
 - ⚠️ 运行依赖：`whb/bv-libs`（VLC 原生库 release 检查）与 `whb/bv-blacklist`（黑名单数据）需用户自行建仓，否则 VLC 自动下载与黑名单功能在运行时失败。
 
 ## 构建与发布
-- 编译：`JAVA_HOME` 指向受管 JDK21（`~/.workbuddy/binaries/build-tools/jdk-21.0.12.1+1`）。
+- 编译：`JAVA_HOME` 指向 JDK21（`/d/devel/jdk-21.0.12.1+1`，Temurin；注意 `~/.workbuddy/binaries/build-tools/...` 这个路径**不存在**，别再用）。
 - **打包架构逻辑（`app/build.gradle.kts`，2026-10-19 重写）**：
   - flavor `default` 含 VLC，`lite` 剔除 VLC（release + debug 都剔）；二者仅 VLC 这 3 个 `.so`（libvlc/libc++_shared/libvlcjni）不同。
   - 架构集合：非 release（debug 等）默认**全部 4 种**（x86_64/x86/arm64-v8a/armeabi-v7a）；`release` 默认仅 **arm64-v8a**；`release` 加 `-PdualAbi=true` 时为 **arm64-v8a + armeabi-v7a**。

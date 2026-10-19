@@ -184,6 +184,7 @@ java {
 }
 
 dependencies {
+    implementation(project(":app:shared"))
     implementation(project(":app:mobile"))
     implementation(project(":app:tv"))
 }
