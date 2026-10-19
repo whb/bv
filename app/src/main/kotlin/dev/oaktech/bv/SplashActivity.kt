@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import dev.oaktech.bv.mobile.activities.MainActivity as MobileMainActivity
 import dev.oaktech.bv.tv.activities.MainActivity as TvMainActivity
 
@@ -16,6 +17,7 @@ import dev.oaktech.bv.tv.activities.MainActivity as TvMainActivity
  */
 class SplashActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
 
         val target = if (isTvDevice()) TvMainActivity::class.java else MobileMainActivity::class.java

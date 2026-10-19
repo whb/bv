@@ -2,9 +2,13 @@
 
     <style name="Theme.BV" parent="Theme.Material3.DayNight.NoActionBar" />
 
-    <!-- 单一启动入口（dispatcher）专用：暗色而非纯黑的窗口背景，
-         与后续 mobile/tv 开屏的 splashBackground 一致，避免黑屏闪烁 -->
-    <style name="Theme.BV.Splash" parent="Theme.Material3.DayNight.NoActionBar">
+    <!-- 单一启动入口（dispatcher）专用：复用 SplashScreen，显示 logo，
+         背景为 splashBackground（#1A1A1A，暗色而非纯黑），
+         与后续 mobile/tv 开屏视觉一致 -->
+    <style name="Theme.BV.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splashBackground</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.BV</item>
         <item name="android:windowBackground">@color/splashBackground</item>
         <item name="android:statusBarColor">@color/splashBackground</item>
         <item name="android:navigationBarColor">@color/splashBackground</item>
