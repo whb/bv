@@ -9,7 +9,12 @@
 - ⚠️ 运行依赖：`whb/bv-libs`（VLC 原生库 release 检查）与 `whb/bv-blacklist`（黑名单数据）需用户自行建仓，否则 VLC 自动下载与黑名单功能在运行时失败。
 
 ## 构建与发布
-- 编译：`JAVA_HOME` 指向受管 JDK21（`~/.workbuddy/binaries/build-tools/jdk-21.0.12.1+1`）；`gradlew :app:assembleDefaultRelease -PdualAbi=true` 出双架构单 APK（arm64-v8a + armeabi-v7a）。
+- 编译：`JAVA_HOME` 指向受管 JDK21（`~/.workbuddy/binaries/build-tools/jdk-21.0.12.1+1`）。
+- **打包架构逻辑（`app/build.gradle.kts`，2026-10-19 重写）**：
+  - flavor `default` 含 VLC，`lite` 剔除 VLC（release + debug 都剔）；二者仅 VLC 这 3 个 `.so`（libvlc/libc++_shared/libvlcjni）不同。
+  - 架构集合：非 release（debug 等）默认**全部 4 种**（x86_64/x86/arm64-v8a/armeabi-v7a）；`release` 默认仅 **arm64-v8a**；`release` 加 `-PdualAbi=true` 时为 **arm64-v8a + armeabi-v7a**。
+  - 实现：`VLC` 剔除走 `androidComponents.onVariants` + `variant.packaging.jniLibs.excludes` 按 `variant.flavorName == "lite"`；架构走 `buildTypes.release.ndk.abiFilters`。**已移除**原先按 `gradle.startParameter.taskNames` 嗅探与 `splits` 块。
+  - ⚠️ AGP 8.11 坑：variant API **没有** `variant.ndk.abiFilters`（仅 `externalNativeBuild.abiFilters`，是给 CMake 用的）；按变体限制 jniLibs 打包架构必须在 DSL 的 `buildTypes.xxx.ndk.abiFilters` 里设。
 - symbols 模块 KSP（material-symbols-compose）从 `raw.githubusercontent.com` 拉图标 XML；本沙箱代理 3935 仅放行 github.com、拦截 raw 域，故 `:symbols:kspKotlin` 在此环境无法联网，不能本地重跑验证。已在 `symbols/build.gradle.kts` 配 `materialSymbols.network.cache.cacheDirectory` 持久缓存。
 - 合规：Demo 仅本地验证，勿上架/分发；接持牌方须替换 `bili-api/.../BiliAppConf.kt` 的 `android_hd`。
 
