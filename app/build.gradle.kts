@@ -131,7 +131,7 @@ android {
             excludes += "**/*.proto"
         }
 
-        if (gradle.startParameter.taskNames.find { it.startsWith("assembleLite") } != null) {
+        if (gradle.startParameter.taskNames.find { it.contains("assembleLite") } != null) {
             jniLibs {
                 val vlcLibs = listOf("libvlc", "libc++_shared", "libvlcjni")
                 val abis = listOf("x86_64", "x86", "arm64-v8a", "armeabi-v7a")
@@ -143,7 +143,8 @@ android {
     splits {
         // 单架构模式（默认）：仅打 arm64-v8a 分离包
         // 双架构模式（-PdualAbi=true）：不启用 splits，由 defaultConfig.ndk.abiFilters 决定
-        if (!dualAbi && gradle.startParameter.taskNames.find { it.contains("assembleDefaultRelease") } != null) {
+        // lite / default 的 release 都走单 ABI 拆分（contains 兼容 :app: 任务名前缀）
+        if (!dualAbi && gradle.startParameter.taskNames.find { it.contains("assembleDefaultRelease") || it.contains("assembleLiteRelease") } != null) {
             abi {
                 isEnable = true
                 reset()
