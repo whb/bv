@@ -75,7 +75,7 @@ fun BVTheme(
     val density = if (view.isInEditMode)
         LocalDensity.current.density
     else
-        Prefs.densityFlow.collectAsState(context.resources.displayMetrics.widthPixels / 960f).value
+        Prefs.densityFlow.collectAsState(context.resources.displayMetrics.widthPixels / 1280f).value
 
     val showFps by remember { mutableStateOf(if (!view.isInEditMode) Prefs.showFps else false) }
 
