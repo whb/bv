@@ -94,6 +94,23 @@
 -dontwarn java.lang.management.ManagementFactory
 -dontwarn java.lang.management.RuntimeMXBean
 
+# Compose 1.8 把 ViewLayerContainer 从 androidx.compose.ui.platform（ui）挪到了
+# androidx.compose.ui.graphics.layer.view（ui-graphics），但 compose-ui 的 consumer 规则
+# 仍 keep 旧包名，ui-graphics 又没有对应规则。R8 看不到对 framework hidden API
+# ViewGroup.dispatchGetDisplayList() 的调用（android.jar stub 无此方法），会删除
+# ViewLayerContainer 中重写的该方法，导致 Android 9 (API < 29) 的 display list
+# 分发失效，draw 阶段访问已 detach 的 LayoutNode 而崩溃：
+# java.lang.IllegalStateException: LayoutNode should be attached to an owner
+# 参考：https://issuetracker.google.com/issues/425120571
+# （仅 release 复现：debug 不启用 R8，方法保留）
+-keepclassmembers class androidx.compose.ui.graphics.layer.view.ViewLayerContainer {
+    protected void dispatchGetDisplayList();
+}
+# 旧包名兜底（compose-ui consumer 规则自带，防版本回退时失效）
+-keepclassmembers class androidx.compose.ui.platform.ViewLayerContainer {
+    protected void dispatchGetDisplayList();
+}
+
 # LibVLC
 -keep class org.videolan.libvlc.** { *; }
 

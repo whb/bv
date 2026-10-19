@@ -20,3 +20,6 @@
 
 ## 已实现功能（截至 2026-10-15）
 - 双架构 APK；弹幕全局开关（设置→播放设置→弹幕，默认关，移动端 BvPlayer 总开关已补）；"我的关注"up 主视频列表 WBI 签名根因修复 + "没有视频"空态；主菜单"分区"功能（ZoneGrid→ZoneDetail）。
+
+## 已知坑与修复
+- **Compose 1.8 + R8 + Android 9 闪退（已修复 2026-10-19）**：release 包在 Android 9 设备（雷鸟）draw 阶段崩 `IllegalStateException: LayoutNode should be attached to an owner`。根因：Compose 1.8 将 `ViewLayerContainer` 移至 `androidx.compose.ui.graphics.layer.view`，但 consumer proguard 规则仍 keep 旧包名，R8 删除 framework hidden API `dispatchGetDisplayList()` 的 override。修复：`app/proguard-rules.pro` 已加 keep 规则。若再遇类似"debug 稳 release 崩"的 Compose 内部 ISE，先反混淆（retrace + mapping）再对照 issuetracker。
