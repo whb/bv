@@ -20,7 +20,7 @@ if (AppConfiguration.googleServicesAvailable) {
 }
 
 // 双架构开关：`./gradlew :app:assembleDefaultRelease -PdualAbi=true`
-// 作用范围：仅影响 release。release 不传该参数 → 仅 arm64-v8a；传了该参数 → arm64-v8a + armeabi-v7a。
+// 作用范围：仅影响 release。release 不传该参数 → 仅 armeabi-v7a；传了该参数 → arm64-v8a + armeabi-v7a。
 // 非 release（如 debug）无论是否传参，都打全部 4 种架构。
 val dualAbi = gradle.startParameter.projectProperties["dualAbi"] == "true"
 
@@ -61,7 +61,7 @@ android {
             useSupportLibrary = true
         }
         // ndk.abiFilters 按 buildType 在下方 buildTypes 中设定：
-        // release 限制为 arm64（-PdualAbi 时加 armeabi-v7a）；debug 等不设 → 默认全部 4 种架构
+        // release 限制为 armeabi-v7a（-PdualAbi 时加 arm64-v8a）；debug 等不设 → 默认全部 4 种架构
     }
 
     flavorDimensions.add("channel")
@@ -87,9 +87,9 @@ android {
             configure<CrashlyticsExtension> {
                 mappingFileUploadEnabled = AppConfiguration.googleServicesAvailable
             }
-            // 架构：release 默认仅 arm64-v8a；传 -PdualAbi 则额外包含 armeabi-v7a
+            // 架构：release 默认仅 armeabi-v7a；传 -PdualAbi 则额外包含 arm64-v8a
             ndk {
-                abiFilters += if (dualAbi) listOf("arm64-v8a", "armeabi-v7a") else listOf("arm64-v8a")
+                abiFilters += if (dualAbi) listOf("arm64-v8a", "armeabi-v7a") else listOf("armeabi-v7a")
             }
         }
         debug {
@@ -147,7 +147,7 @@ android {
         val abiLabel = when {
             variant.buildType.name != "release" -> "universal"      // 4 种全打
             dualAbi -> "arm64_armeabi"                             // arm64-v8a + armeabi-v7a
-            else -> "arm64"                                        // 仅 arm64-v8a
+            else -> "armeabi"                                       // 仅 armeabi-v7a
         }
         outputs.configureEach {
             (this as ApkVariantOutputImpl).apply {
