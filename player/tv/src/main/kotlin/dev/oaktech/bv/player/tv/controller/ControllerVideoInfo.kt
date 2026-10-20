@@ -77,7 +77,7 @@ fun ControllerVideoInfo(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(show) {
         setCloseInfoTimer()
     }
 

@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -93,6 +94,7 @@ fun VideoPlayerController(
     var showListController by remember { mutableStateOf(false) }
     var showMenuController by remember { mutableStateOf(false) }
     var showSeekController by remember { mutableStateOf(false) }
+    var showInfo by remember { mutableStateOf(false) }
     val showClickableControllers by remember { derivedStateOf { showListController || showMenuController } }
 
     var lastPressBack by remember { mutableLongStateOf(0L) }
@@ -217,6 +219,7 @@ fun VideoPlayerController(
                     Key.DirectionDown -> {
                         if (it.type == KeyEventType.KeyDown) return@onPreviewKeyEvent true
                         logger.info { "[${it.key} press]" }
+                        showInfo = !showInfo
                         return@onPreviewKeyEvent true
                     }
 
@@ -346,6 +349,11 @@ fun VideoPlayerController(
             onSubtitleBackgroundOpacityChange = onSubtitleBackgroundOpacityChange,
             onSubtitleBottomPadding = onSubtitleBottomPadding,
             onPlayModeChange = onPlayModeChange
+        )
+        ControllerVideoInfo(
+            modifier = Modifier.fillMaxSize(),
+            show = showInfo,
+            onHideInfo = { showInfo = false }
         )
     }
 }
