@@ -156,8 +156,6 @@
     <string name="search_input_soft_keybord_search">搜索</string>
     <string name="search_input_suggest">你可能要找的是</string>
     <string name="search_input_title">搜索</string>
-    <string name="search_input_toggle_ime">切换输入法</string>
-    <string name="search_input_ime_hint">已切换到电视系统输入法，可使用其「扫码输入」功能，在手机上输入文字后实时回传到此处。</string>
     <string name="search_result_filter_duration_10_to_30">10–30 分钟</string>
     <string name="search_result_filter_duration_30_to_60">30–60 分钟</string>
     <string name="search_result_filter_duration_all">全部时长</string>

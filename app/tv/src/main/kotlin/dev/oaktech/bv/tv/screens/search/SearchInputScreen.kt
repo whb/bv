@@ -24,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -38,7 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -197,8 +195,7 @@ private fun SearchInput(
     onEnableProxyChange: (Boolean) -> Unit
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
-    var useSystemIme by remember { mutableStateOf(false) }
-    val textFieldFocusRequester = remember { FocusRequester() }
+    var textFieldFocused by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -211,56 +208,26 @@ private fun SearchInput(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                OutlinedTextField(
-                    modifier = Modifier
-                        .width(206.dp)
-                        .focusRequester(textFieldFocusRequester)
-                        .onFocusEvent {
-                            if (it.isFocused) {
-                                if (useSystemIme) keyboardController?.show()
-                                else keyboardController?.hide()
-                            }
-                        },
-                    value = searchKeyword,
-                    onValueChange = onSearchKeywordChange,
-                    maxLines = 1,
-                    shape = MaterialTheme.shapes.large,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { onSearch(searchKeyword) }),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.inverseSurface,
-                        cursorColor = MaterialTheme.colorScheme.inverseSurface
-                    )
-                )
-                IconButton(
-                    onClick = {
-                        useSystemIme = !useSystemIme
-                        if (useSystemIme) {
-                            textFieldFocusRequester.requestFocus()
-                            keyboardController?.show()
-                        } else {
-                            keyboardController?.hide()
-                        }
+            OutlinedTextField(
+                modifier = Modifier
+                    .width(258.dp)
+                    .onFocusEvent {
+                        textFieldFocused = it.isFocused
+                        if (it.isFocused) keyboardController?.show()
+                        else keyboardController?.hide()
                     },
-                    colors = ButtonDefaults.colors(
-                        containerColor = if (useSystemIme) {
-                            MaterialTheme.colorScheme.inverseSurface
-                        } else {
-                            MaterialTheme.colorScheme.surface
-                        }
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Keyboard,
-                        contentDescription = stringResource(R.string.search_input_toggle_ime)
-                    )
-                }
-            }
-            if (!useSystemIme) {
+                value = searchKeyword,
+                onValueChange = onSearchKeywordChange,
+                maxLines = 1,
+                shape = MaterialTheme.shapes.large,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSearch(searchKeyword) }),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.inverseSurface,
+                    cursorColor = MaterialTheme.colorScheme.inverseSurface
+                )
+            )
+            if (!textFieldFocused) {
                 SoftKeyboard(
                     firstButtonFocusRequester = firstButtonFocusRequester,
                     showSearchWithProxy = showProxyOptions,
@@ -274,14 +241,6 @@ private fun SearchInput(
                     },
                     onSearch = { onSearch(searchKeyword) },
                     onEnableSearchWithProxyChange = onEnableProxyChange
-                )
-            } else {
-                Text(
-                    modifier = Modifier
-                        .width(258.dp)
-                        .padding(vertical = 16.dp),
-                    text = stringResource(R.string.search_input_ime_hint),
-                    style = MaterialTheme.typography.titleMedium
                 )
             }
         }
