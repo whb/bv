@@ -23,7 +23,7 @@ abstract class UgcViewModel(
     open val ugcRepository: UgcRepository,
     val ugcType: UgcTypeV2
 ) : ViewModel() {
-    private val logger = KotlinLogging.logger("UgvViewModel[$ugcType]")
+    private val logger = KotlinLogging.logger("UgcViewModel[$ugcType]")
 
     /**
      * 轮播图
