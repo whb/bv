@@ -6,7 +6,7 @@ import org.koin.android.annotation.KoinViewModel
 
 @KoinViewModel
 class UgcHealthViewModel(
-    override val ugcRepository: UgcRepository
+    ugcRepository: UgcRepository
 ) : UgcViewModel(
     ugcRepository = ugcRepository,
     ugcType = UgcTypeV2.Health

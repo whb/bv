@@ -21,10 +21,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 abstract class UgcViewModel(
-    open val ugcRepository: UgcRepository,
+    val ugcRepository: UgcRepository,
     val ugcType: UgcTypeV2
 ) : ViewModel() {
     private val logger = KotlinLogging.logger("UgcViewModel[$ugcType]")
+    // 专用错误 tag：初次进入 UGC 时界面弹出的报错信息同步写入 logcat，
+    // 便于用 `adb logcat -s BV_UGC` 抓取（tag 控制在 23 字符内，专用于错误类日志）。
+    private val errorLogger = KotlinLogging.logger("BV_UGC")
 
     /**
      * 轮播图
@@ -66,9 +69,11 @@ abstract class UgcViewModel(
             ugcItems.addAll(data.items)
             nextPage = data.nextPage
         }.onFailure {
-            logger.fWarn { "load $ugcType data failed: ${it.stackTraceToString()}" }
+            val msg = "加载 $ugcType 数据失败: ${it.message}"
+            errorLogger.error(it) { msg }
+            logger.fWarn { "load $ugcType data failed" }
             withContext(Dispatchers.Main) {
-                "加载 $ugcType 数据失败: ${it.message}".toast(BVApp.context)
+                msg.toast(BVApp.context)
             }
         }
         // 轮播图独立加载，失败仅记日志，不影响 feed 展示
@@ -105,9 +110,11 @@ abstract class UgcViewModel(
             nextPage = data.nextPage
             hasMore = data.items.isNotEmpty()
         }.onFailure {
-            logger.fWarn { "load more $ugcType data failed: ${it.stackTraceToString()}" }
+            val msg = "加载 $ugcType 更多推荐失败: ${it.message}"
+            errorLogger.error(it) { msg }
+            logger.fWarn { "load more $ugcType data failed" }
             withContext(Dispatchers.Main) {
-                "加载 $ugcType 更多推荐失败: ${it.message}".toast(BVApp.context)
+                msg.toast(BVApp.context)
             }
         }
         updating = false

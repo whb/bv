@@ -6,7 +6,7 @@ import org.koin.android.annotation.KoinViewModel
 
 @KoinViewModel
 class UgcAiViewModel(
-    override val ugcRepository: UgcRepository
+    ugcRepository: UgcRepository
 ) : UgcViewModel(
     ugcRepository = ugcRepository,
     ugcType = UgcTypeV2.Ai
