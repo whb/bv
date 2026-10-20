@@ -58,9 +58,12 @@ import coil.compose.AsyncImage
 import dev.oaktech.bv.R
 import dev.oaktech.bv.tv.component.LoadingTip
 import dev.oaktech.bv.tv.activities.video.UpInfoActivity
+import dev.oaktech.bv.tv.util.PinyinSearch
 import dev.oaktech.bv.ui.theme.BVTheme
 import dev.oaktech.bv.util.requestFocus
 import dev.oaktech.bv.viewmodel.user.FollowViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -81,15 +84,37 @@ fun FollowScreen(
         label = "title font size"
     )
 
+    // 检索文本块（昵称原文 + 拼音全拼 + 首字母 + 签名），列表就绪后在后台线程预构建，
+    // 避免首次输入时在主线程加载拼音字典造成卡顿
+    var searchBlobs by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
+    LaunchedEffect(followViewModel.followedUsers.toList()) {
+        val users = followViewModel.followedUsers.toList()
+        if (users.isEmpty()) {
+            searchBlobs = emptyMap()
+        } else {
+            searchBlobs = withContext(Dispatchers.Default) {
+                users.associate { user ->
+                    user.mid to (PinyinSearch.buildSearchBlob(user.name) + user.sign.lowercase())
+                }
+            }
+        }
+    }
+
     val filteredUsers by remember {
         derivedStateOf {
-            val kw = keyword.trim()
+            val kw = PinyinSearch.normalize(keyword)
             if (kw.isEmpty()) {
                 followViewModel.followedUsers.toList()
             } else {
-                followViewModel.followedUsers.filter {
-                    it.name.contains(kw, ignoreCase = true) ||
-                            it.sign.contains(kw, ignoreCase = true)
+                followViewModel.followedUsers.filter { user ->
+                    val blob = searchBlobs[user.mid]
+                    if (blob != null) {
+                        blob.contains(kw)
+                    } else {
+                        // 拼音索引尚未就绪时退回原文匹配
+                        user.name.contains(kw, ignoreCase = true) ||
+                                user.sign.contains(kw, ignoreCase = true)
+                    }
                 }
             }
         }

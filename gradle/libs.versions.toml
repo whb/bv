@@ -20,6 +20,7 @@ logging = "7.0.7"
 lottie = "6.6.7"
 material = "1.12.0"
 material-symbols-compose = "1.0.1"
+pinyin4j = "2.5.1"
 protobuf = "4.31.1"
 qrcode = "4.5.0"
 rememberPreference = "1.1.1"
@@ -110,6 +111,9 @@ material-symbols-compose-ksp = { module = "com.github.1552980358.material-symbol
 
 # https://github.com/g0dkar/qrcode-kotlin
 qrcode = { module = "io.github.g0dkar:qrcode-kotlin-android", version.ref = "qrcode" }
+
+# https://github.com/belerweb/pinyin4j
+pinyin4j = { module = "com.belerweb:pinyin4j", version.ref = "pinyin4j" }
 
 # https://github.com/burnoo/compose-remember-preference
 rememberPreference = { module = "dev.burnoo:compose-remember-preference", version.ref = "rememberPreference" }

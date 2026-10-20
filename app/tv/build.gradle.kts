@@ -63,4 +63,7 @@ java {
 
 dependencies {
     implementation(project(":app:shared"))
+
+    // 拼音搜索（关注列表按拼音/首字母过滤）
+    implementation(libs.pinyin4j)
 }

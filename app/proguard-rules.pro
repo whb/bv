@@ -111,6 +111,11 @@
     protected void dispatchGetDisplayList();
 }
 
+# pinyin4j（关注列表拼音/首字母搜索）
+# 该类库通过 ClassLoader 读取 jar 内的汉字拼音表资源，类名被混淆或裁剪会导致拼音失效
+-keep class net.sourceforge.pinyin4j.** { *; }
+-dontwarn net.sourceforge.pinyin4j.**
+
 # LibVLC
 -keep class org.videolan.libvlc.** { *; }
 
