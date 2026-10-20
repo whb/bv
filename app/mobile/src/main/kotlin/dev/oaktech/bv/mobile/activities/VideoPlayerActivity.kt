@@ -18,6 +18,7 @@ import dev.oaktech.bv.mobile.screen.VideoPlayerScreen
 import dev.oaktech.bv.mobile.theme.BVMobileTheme
 import dev.oaktech.bv.player.VideoPlayerOptions
 import dev.oaktech.bv.player.impl.exo.ExoPlayerFactory
+import dev.oaktech.bv.util.Av1Support
 import dev.oaktech.bv.util.Prefs
 import dev.oaktech.bv.util.fInfo
 import dev.oaktech.bv.util.toast
@@ -83,6 +84,10 @@ class VideoPlayerActivity : ComponentActivity() {
             referer = when (Prefs.apiType) {
                 ApiType.Web -> getString(R.string.video_player_referer)
                 ApiType.App -> null
+            },
+            enableAv1MimeRewrite = Av1Support.needsAv1MimeRewrite(),
+            onAv1DecodeFailed = {
+                playerViewModel.fallbackAv1ToOtherCodec()
             }
         )
         val videoPlayer = when (Prefs.playerType) {

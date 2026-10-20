@@ -29,6 +29,7 @@ import dev.oaktech.biliapi.repositories.VideoPlayRepository
 import dev.oaktech.bilisubtitle.SubtitleParser
 import dev.oaktech.bilisubtitle.entity.SubtitleItem
 import dev.oaktech.bv.BVApp
+import dev.oaktech.bv.R
 import dev.oaktech.bv.entity.proxy.ProxyArea
 import dev.oaktech.bv.player.AbstractVideoPlayer
 import dev.oaktech.bv.player.entity.Audio
@@ -40,12 +41,14 @@ import dev.oaktech.bv.player.entity.VideoAspectRatio
 import dev.oaktech.bv.player.entity.VideoCodec
 import dev.oaktech.bv.player.entity.VideoListItemData
 import dev.oaktech.bv.repository.VideoInfoRepository
+import dev.oaktech.bv.util.Av1Support
 import dev.oaktech.bv.util.Prefs
 import dev.oaktech.bv.util.fException
 import dev.oaktech.bv.util.fInfo
 import dev.oaktech.bv.util.fWarn
 import dev.oaktech.bv.util.swapList
 import dev.oaktech.bv.util.swapListWithMainContext
+import dev.oaktech.bv.util.toast
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -320,15 +323,67 @@ class VideoPlayerV3ViewModel(
         logger.fInfo { "Video available codec: ${availableVideoCodec.toList()}" }
 
         logger.fInfo { "Default codec: $currentVideoCodec" }
-        val currentVideoCodec = if (codecList.contains(Prefs.defaultVideoCodec)) {
-            Prefs.defaultVideoCodec
-        } else {
-            codecList.minByOrNull { it.ordinal }!!
+        val selectedCodec = when {
+            // 默认编码在片源中存在，且当前设备能解码
+            codecList.contains(Prefs.defaultVideoCodec) && Prefs.defaultVideoCodec.isDecodableOnDevice() ->
+                Prefs.defaultVideoCodec
+            // 默认编码在片源中存在，但设备解不了（如 AV1 注册成私有 mime 的平台），降级并提示
+            codecList.contains(Prefs.defaultVideoCodec) -> {
+                val fallback =
+                    pickDecodableFallbackCodec(codecList, exclude = Prefs.defaultVideoCodec)
+                val message = BVApp.context.getString(
+                    R.string.player_codec_undecodable_fallback,
+                    Prefs.defaultVideoCodec.getDisplayName(BVApp.context),
+                    fallback.getDisplayName(BVApp.context)
+                )
+                logger.fWarn { message }
+                message.toast(BVApp.context)
+                addLogs(message)
+                fallback
+            }
+            else -> codecList.minByOrNull { it.ordinal }!!
         }
         withContext(Dispatchers.Main) {
-            this@VideoPlayerV3ViewModel.currentVideoCodec = currentVideoCodec
+            this@VideoPlayerV3ViewModel.currentVideoCodec = selectedCodec
         }
-        logger.fInfo { "Select codec: $currentVideoCodec" }
+        logger.fInfo { "Select codec: $selectedCodec" }
+    }
+
+    /** 当前设备是否能解码该编码（AV1 受厂商私有 mime 影响，见 Av1Support） */
+    private fun VideoCodec.isDecodableOnDevice(): Boolean = when (this) {
+        VideoCodec.AV1 -> Av1Support.isAv1Decodable()
+        else -> true
+    }
+
+    /** 在片源可用编码中挑一个当前设备能解码的替代编码，优先 H.265，其次 H.264 */
+    private fun pickDecodableFallbackCodec(
+        codecList: List<VideoCodec>,
+        exclude: VideoCodec
+    ): VideoCodec = listOf(VideoCodec.HEVC, VideoCodec.AVC)
+        .firstOrNull { it != exclude && it in codecList }
+        ?: codecList.firstOrNull { it != exclude && it.isDecodableOnDevice() }
+        ?: codecList.firstOrNull { it != exclude }
+        ?: codecList.first()
+
+    /**
+     * AV1 解码失败（mime 重写后仍渲染不出画面）时降级到其他编码，
+     * 由播放器回调触发，见 VideoPlayerOptions.onAv1DecodeFailed。
+     */
+    fun fallbackAv1ToOtherCodec() {
+        val fallback = listOf(VideoCodec.HEVC, VideoCodec.AVC)
+            .firstOrNull { it != VideoCodec.AV1 && it in availableVideoCodec }
+            ?: return
+        val message = BVApp.context.getString(
+            R.string.player_av1_decode_failed,
+            fallback.getDisplayName(BVApp.context)
+        )
+        logger.fWarn { "AV1 decode failed, fallback to codec: $fallback" }
+        message.toast(BVApp.context)
+        currentVideoCodec = fallback
+        viewModelScope.launch {
+            addLogs(message)
+            playQuality(qn = currentQuality, codec = fallback)
+        }
     }
 
     suspend fun playQuality(
@@ -342,8 +397,25 @@ class VideoPlayerV3ViewModel(
             updateAvailableCodec()
             playQuality(qn.code, currentVideoCodec, audio)
         } else {
-            playQuality(qn.code, codec, audio)
+            // 手动切换编码时也校验设备能否解码，不可解码则降级并提示
+            playQuality(qn.code, resolvePlayableCodec(codec), audio)
         }
+    }
+
+    /** 校验所选编码在当前设备上是否可解码，不可解码则降级并提示 */
+    private suspend fun resolvePlayableCodec(codec: VideoCodec): VideoCodec {
+        if (codec.isDecodableOnDevice() || availableVideoCodec.size <= 1) return codec
+        val fallback = pickDecodableFallbackCodec(availableVideoCodec.toList(), exclude = codec)
+        val message = BVApp.context.getString(
+            R.string.player_codec_undecodable_fallback,
+            codec.getDisplayName(BVApp.context),
+            fallback.getDisplayName(BVApp.context)
+        )
+        logger.fWarn { message }
+        message.toast(BVApp.context)
+        addLogs(message)
+        withContext(Dispatchers.Main) { currentVideoCodec = fallback }
+        return fallback
     }
 
     private suspend fun playQuality(

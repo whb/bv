@@ -11,13 +11,21 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.extractor.DefaultExtractorsFactory
 import dev.oaktech.bv.player.AbstractVideoPlayer
 import dev.oaktech.bv.player.OkHttpUtil
 import dev.oaktech.bv.player.VideoPlayerOptions
 import dev.oaktech.bv.util.formatHourMinSec
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
 class ExoMediaPlayer(
@@ -26,6 +34,21 @@ class ExoMediaPlayer(
 ) : AbstractVideoPlayer(), Player.Listener {
     var mPlayer: ExoPlayer? = null
     protected var mMediaSource: MediaSource? = null
+
+    /** AV1 mime 重写后的解码兜底检测 */
+    private var av1FallbackJob: Job? = null
+    private var av1FirstFrameRendered = false
+    private val mainScope = CoroutineScope(Dispatchers.Main.immediate)
+
+    private val analyticsListener = object : AnalyticsListener {
+        override fun onRenderedFirstFrame(
+            eventTime: AnalyticsListener.EventTime,
+            output: Any,
+            presentationTimeUs: Long
+        ) {
+            av1FirstFrameRendered = true
+        }
+    }
 
     @OptIn(UnstableApi::class)
     private val dataSourceFactory =
@@ -60,6 +83,7 @@ class ExoMediaPlayer(
 
     private fun initListener() {
         mPlayer?.addListener(this)
+        mPlayer?.addAnalyticsListener(analyticsListener)
     }
 
     @OptIn(UnstableApi::class)
@@ -69,13 +93,19 @@ class ExoMediaPlayer(
 
     @OptIn(UnstableApi::class)
     override fun playUrl(videoUrl: String?, audioUrl: String?) {
+        // MStar / Realtek 等平台的 AV1 解码器注册的是私有 mime video/av1，
+        // 需要重写视频轨 mime 才能被 ExoPlayer 找到，见 Av1MimeRewriteExtractorsFactory
+        val extractorsFactory = if (options.enableAv1MimeRewrite) {
+            Av1MimeRewriteExtractorsFactory()
+        } else {
+            DefaultExtractorsFactory()
+        }
+        val mediaSourceFactory = ProgressiveMediaSource.Factory(dataSourceFactory, extractorsFactory)
         val videoMediaSource = videoUrl?.let {
-            ProgressiveMediaSource.Factory(dataSourceFactory)
-                .createMediaSource(MediaItem.fromUri(it))
+            mediaSourceFactory.createMediaSource(MediaItem.fromUri(it))
         }
         val audioMediaSource = audioUrl?.let {
-            ProgressiveMediaSource.Factory(dataSourceFactory)
-                .createMediaSource(MediaItem.fromUri(it))
+            mediaSourceFactory.createMediaSource(MediaItem.fromUri(it))
         }
 
         val mediaSources = listOfNotNull(videoMediaSource, audioMediaSource)
@@ -86,6 +116,29 @@ class ExoMediaPlayer(
     override fun prepare() {
         mPlayer?.setMediaSource(mMediaSource!!)
         mPlayer?.prepare()
+        scheduleAv1DecodeCheck()
+    }
+
+    /**
+     * AV1 mime 重写后的兜底检测：厂商解码器可能实现残缺，匹配上了也解不出画面，
+     * 此时既不报错也不出帧。准备播放后若音频已就绪（READY）却迟迟渲染不出首帧，
+     * 判定为 AV1 解码失败，回调上层降级到其他编码。
+     */
+    private fun scheduleAv1DecodeCheck() {
+        av1FallbackJob?.cancel()
+        av1FirstFrameRendered = false
+        if (!options.enableAv1MimeRewrite) return
+        av1FallbackJob = mainScope.launch {
+            delay(AV1_DECODE_CHECK_DELAY_MS)
+            val player = mPlayer ?: return@launch
+            // 只在音频已正常播放时才判定失败，避免网络缓冲慢被误判
+            if (!av1FirstFrameRendered &&
+                player.playbackState == Player.STATE_READY &&
+                player.playWhenReady
+            ) {
+                options.onAv1DecodeFailed?.invoke()
+            }
+        }
     }
 
     override fun start() {
@@ -112,6 +165,7 @@ class ExoMediaPlayer(
     }
 
     override fun release() {
+        av1FallbackJob?.cancel()
         mPlayer?.release()
     }
 
@@ -190,5 +244,10 @@ class ExoMediaPlayer(
 
     override fun onPlayerError(error: PlaybackException) {
         mPlayerEventListener?.onError(error)
+    }
+
+    companion object {
+        /** AV1 解码兜底检测的等待时间：音频已就绪但这么久还没渲染出首帧，视为解码失败 */
+        private const val AV1_DECODE_CHECK_DELAY_MS = 8000L
     }
 }

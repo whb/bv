@@ -133,6 +133,8 @@
     <string name="player_controller_menu_item_subtitle_padding">字幕底部间距</string>
     <string name="player_controller_menu_item_video_aspect_ratio">视频比例</string>
     <string name="player_controller_menu_item_video_codec">视频编码</string>
+    <string name="player_codec_undecodable_fallback">设备无法解码 %1$s，已切换为 %2$s</string>
+    <string name="player_av1_decode_failed">AV1 解码失败，已切换为 %1$s</string>
     <string name="player_tip_need_pay">请先购买影片再进行观看\n不支持试看</string>
 
     <string name="proxy_server_edit_dialog_input_field_label">服务器域名</string>

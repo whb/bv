@@ -14,6 +14,7 @@ import dev.oaktech.bv.player.VideoPlayerOptions
 import dev.oaktech.bv.player.impl.exo.ExoPlayerFactory
 import dev.oaktech.bv.tv.screens.VideoPlayerV3Screen
 import dev.oaktech.bv.ui.theme.BVTheme
+import dev.oaktech.bv.util.Av1Support
 import dev.oaktech.bv.util.Prefs
 import dev.oaktech.bv.util.fInfo
 import dev.oaktech.bv.viewmodel.VideoPlayerV3ViewModel
@@ -101,7 +102,11 @@ class VideoPlayerV3Activity : ComponentActivity() {
                 ApiType.Web -> getString(R.string.video_player_referer)
                 ApiType.App -> null
             },
-            enableFfmpegAudioRenderer = Prefs.enableFfmpegAudioRenderer
+            enableFfmpegAudioRenderer = Prefs.enableFfmpegAudioRenderer,
+            enableAv1MimeRewrite = Av1Support.needsAv1MimeRewrite(),
+            onAv1DecodeFailed = {
+                playerViewModel.fallbackAv1ToOtherCodec()
+            }
         )
         val videoPlayer = when (Prefs.playerType) {
             PlayerType.Media3 -> ExoPlayerFactory().create(this, options)
