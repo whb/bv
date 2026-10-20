@@ -645,6 +645,8 @@
     <string name="user_homepage_anime">我追的番</string>
     <string name="user_homepage_favorite">私人藏品</string>
     <string name="user_homepage_follow">已关注</string>
+    <string name="follow_search_hint">搜索已关注的 UP 主</string>
+    <string name="follow_search_empty">没有匹配的 UP 主</string>
     <string name="user_homepage_recent">最近播放记录</string>
     <string name="user_homepage_user_switch">账户管理</string>
     <string name="user_info_Incognito_mode_off">未开启</string>

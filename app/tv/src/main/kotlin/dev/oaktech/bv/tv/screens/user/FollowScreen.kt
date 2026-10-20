@@ -11,17 +11,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -31,9 +37,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -41,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.Icon
+import androidx.tv.material3.IconButton
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
@@ -61,16 +71,32 @@ fun FollowScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val defaultFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     var currentIndex by remember { mutableIntStateOf(0) }
+    var keyword by remember { mutableStateOf("") }
     val showLargeTitle by remember { derivedStateOf { currentIndex < 3 } }
     val titleFontSize by animateFloatAsState(
         targetValue = if (showLargeTitle) 48f else 24f,
         label = "title font size"
     )
 
+    val filteredUsers by remember {
+        derivedStateOf {
+            val kw = keyword.trim()
+            if (kw.isEmpty()) {
+                followViewModel.followedUsers.toList()
+            } else {
+                followViewModel.followedUsers.filter {
+                    it.name.contains(kw, ignoreCase = true) ||
+                            it.sign.contains(kw, ignoreCase = true)
+                }
+            }
+        }
+    }
+
     LaunchedEffect(followViewModel.updating) {
-        if (!followViewModel.updating) {
+        if (!followViewModel.updating && keyword.isEmpty()) {
             defaultFocusRequester.requestFocus(scope)
         }
     }
@@ -88,20 +114,56 @@ fun FollowScreen(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Bottom,
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
                         text = stringResource(R.string.user_homepage_follow),
                         fontSize = titleFontSize.sp
                     )
-                    Text(
-                        text = stringResource(
-                            R.string.load_data_count,
-                            followViewModel.followedUsers.size
-                        ),
-                        color = Color.White.copy(alpha = 0.6f)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        OutlinedTextField(
+                            modifier = Modifier
+                                .width(360.dp)
+                                .onFocusEvent {
+                                    if (it.isFocused) keyboardController?.show()
+                                    else keyboardController?.hide()
+                                },
+                            value = keyword,
+                            onValueChange = { keyword = it },
+                            singleLine = true,
+                            placeholder = {
+                                Text(
+                                    text = stringResource(R.string.follow_search_hint),
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            },
+                            trailingIcon = if (keyword.isNotEmpty()) {
+                                {
+                                    IconButton(onClick = { keyword = "" }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Close,
+                                            contentDescription = stringResource(R.string.search_input_soft_keybord_clear)
+                                        )
+                                    }
+                                }
+                            } else null,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.inverseSurface,
+                                cursorColor = MaterialTheme.colorScheme.inverseSurface
+                            )
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.load_data_count,
+                                filteredUsers.size
+                            ),
+                            color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
                 }
             }
         }
@@ -114,25 +176,38 @@ fun FollowScreen(
             horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             if (!followViewModel.updating) {
-                itemsIndexed(items = followViewModel.followedUsers) { index, up ->
-                    val upCardModifier =
-                        if (index == 0) Modifier.focusRequester(defaultFocusRequester) else Modifier
-                    UpCard(
-                        modifier = upCardModifier,
-                        face = up.avatar,
-                        sign = up.sign,
-                        username = up.name,
-                        onFocusChange = {
-                            if (it) currentIndex = index
-                        },
-                        onClick = {
-                            UpInfoActivity.actionStart(
-                                context = context,
-                                mid = up.mid,
-                                name = up.name
-                            )
+                if (filteredUsers.isEmpty()) {
+                    item(
+                        span = { GridItemSpan(3) }
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = stringResource(R.string.follow_search_empty))
                         }
-                    )
+                    }
+                } else {
+                    itemsIndexed(items = filteredUsers) { index, up ->
+                        val upCardModifier =
+                            if (index == 0) Modifier.focusRequester(defaultFocusRequester) else Modifier
+                        UpCard(
+                            modifier = upCardModifier,
+                            face = up.avatar,
+                            sign = up.sign,
+                            username = up.name,
+                            onFocusChange = {
+                                if (it) currentIndex = index
+                            },
+                            onClick = {
+                                UpInfoActivity.actionStart(
+                                    context = context,
+                                    mid = up.mid,
+                                    name = up.name
+                                )
+                            }
+                        )
+                    }
                 }
             } else {
                 item(
