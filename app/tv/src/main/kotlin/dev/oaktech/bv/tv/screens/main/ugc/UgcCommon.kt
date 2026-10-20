@@ -1,6 +1,7 @@
 package dev.oaktech.bv.tv.screens.main.ugc
 
 import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import dev.oaktech.biliapi.entity.CarouselData
 import dev.oaktech.biliapi.entity.ugc.UgcItem
 import dev.oaktech.biliapi.entity.ugc.UgcTypeV2
@@ -48,6 +50,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private val logger = KotlinLogging.logger("UgcCommon")
+
+private fun openCarouselLink(context: Context, url: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+    }.onFailure {
+        logger.fWarn { "open carousel link failed: $url, ${it.message}" }
+    }
+}
 
 @Composable
 fun UgcRegionScaffold(
@@ -87,10 +99,14 @@ fun UgcRegionScaffold(
                             .padding(32.dp, 0.dp),
                         data = ugcViewModel.carouselItems,
                         onClick = { item ->
-                            VideoInfoActivity.actionStart(
-                                context = context,
-                                aid = item.avid!!
-                            )
+                            val avid = item.avid
+                            val url = item.url
+                            when {
+                                avid != null ->
+                                    VideoInfoActivity.actionStart(context = context, aid = avid)
+                                !url.isNullOrBlank() ->
+                                    openCarouselLink(context, url)
+                            }
                         }
                     )
                 }

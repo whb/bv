@@ -1,5 +1,6 @@
 package dev.oaktech.bv.mobile.screen
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -270,22 +272,35 @@ private fun ZoneDetailScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     contentPadding = PaddingValues(4.dp)
                                 ) {
-                                    lazyRowItems(zoneDetailViewModel.carouselItems) { banner ->
-                                        AsyncImage(
-                                            model = banner.cover,
-                                            contentDescription = banner.title,
-                                            modifier = Modifier
-                                                .height(120.dp)
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .clickable(enabled = banner.avid != null) {
+                                lazyRowItems(zoneDetailViewModel.carouselItems) { banner ->
+                                    AsyncImage(
+                                        model = banner.cover,
+                                        contentDescription = banner.title,
+                                        modifier = Modifier
+                                            .height(120.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                val avid = banner.avid
+                                                val url = banner.url
+                                                if (avid != null) {
                                                     VideoPlayerActivity.actionStart(
                                                         context = context,
-                                                        aid = banner.avid ?: 0
+                                                        aid = avid
                                                     )
-                                                },
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    }
+                                                } else if (!url.isNullOrBlank()) {
+                                                    runCatching {
+                                                        context.startActivity(
+                                                            Intent(
+                                                                Intent.ACTION_VIEW,
+                                                                url.toUri()
+                                                            )
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
                                 }
                             }
                         }

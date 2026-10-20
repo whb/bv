@@ -47,15 +47,17 @@ data class CarouselData(
         fun fromUgcRegionDynamicBanner(data: dev.oaktech.biliapi.http.entity.region.RegionDynamic.Banner): CarouselData {
             val result = mutableListOf<CarouselItem>()
             data.top.forEach { top ->
-                if (!UrlUtil.isVideoUrl(top.uri)) return@forEach
-                val avid = UrlUtil.parseAidFromUrl(top.uri)
-                val bvid = avid.toBv()
+                val avid = if (UrlUtil.isVideoUrl(top.uri)) {
+                    runCatching { UrlUtil.parseAidFromUrl(top.uri) }.getOrNull()
+                } else null
+                val bvid = avid?.toBv()
                 result.add(
                     CarouselItem(
                         cover = top.image,
                         title = top.title,
                         avid = avid,
-                        bvid = bvid
+                        bvid = bvid,
+                        url = top.uri
                     )
                 )
             }
@@ -81,15 +83,20 @@ data class CarouselData(
         fun fromRegionBanner(data: dev.oaktech.biliapi.http.entity.region.RegionBanner): CarouselData {
             val result = mutableListOf<CarouselItem>()
             data.regionBannerList.forEach { item ->
-                if (!UrlUtil.isVideoUrl(item.url)) return@forEach
-                val avid = UrlUtil.parseAidFromUrl(item.url)
-                val bvid = avid.toBv()
+                // 保留全部 banner（含活动/话题/投稿页等非视频链接），仅对视频链接解析 avid。
+                // 旧逻辑用 isVideoUrl 过滤会丢弃所有非视频 banner，导致游戏/舞蹈等
+                // 分区（banner 全是活动页）轮播图整块为空、不显示。
+                val avid = if (UrlUtil.isVideoUrl(item.url)) {
+                    runCatching { UrlUtil.parseAidFromUrl(item.url) }.getOrNull()
+                } else null
+                val bvid = avid?.toBv()
                 result.add(
                     CarouselItem(
                         cover = item.image,
                         title = item.title,
                         avid = avid,
-                        bvid = bvid
+                        bvid = bvid,
+                        url = item.url
                     )
                 )
             }
@@ -103,6 +110,8 @@ data class CarouselData(
         val seasonId: Int? = null,
         val episodeId: Int? = null,
         val avid: Long? = null,
-        val bvid: String? = null
+        val bvid: String? = null,
+        /** 原始跳转链接；非视频类 banner（活动/话题/投稿页）无 avid，点击时据此打开网页 */
+        val url: String? = null
     )
 }
