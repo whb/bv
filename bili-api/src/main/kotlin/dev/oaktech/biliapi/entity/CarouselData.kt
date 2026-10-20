@@ -19,8 +19,7 @@ data class CarouselData(
                         || (needParseIdFromUrl && it.link.contains("bangumi/play/ep"))
                         || (needParseIdFromUrl && it.link.contains("bangumi/play/ss"))
             }.forEach {
-                var cover = it.bigCover ?: it.cover
-                if (cover.startsWith("//")) cover = "https:$cover"
+                val cover = (it.bigCover ?: it.cover).toBiliThumbnail()
                 var epidFromUrl: Int? = null
                 var ssidFromUrl: Int? = null
 
@@ -42,6 +41,25 @@ data class CarouselData(
                 )
             }
             return CarouselData(result)
+        }
+
+        /**
+         * 将 B 站图床原图地址转为带动态缩略参数的地址，加速轮播加载。
+         *
+         * 轮播高 240dp，移动/TV 常见密度下约 480px，@480h 足以清晰且大幅缩小体积。
+         * - 仅对 hdslb.com/bfs 域名的图片生效；非图床外链（活动/话题页等）原样返回。
+         * - 若 URL 已带 @ 变换参数（部分栏目 big_cover/cover 已是缩略地址，如 xxx.jpg@518w_1e_1c.webp）
+         *   则原样使用，避免二次拼接产生双 @ 畸形地址、导致请求长时间挂起
+         *   （电影/电视剧/纪录片/综艺等栏目曾因此长时间无图，而番剧/国创 的封面是干净原图故正常）。
+         * - 去掉可能存在的查询串后再拼接 @480h.webp。
+         */
+        private fun String.toBiliThumbnail(): String {
+            var c = this
+            if (c.startsWith("//")) c = "https:$c"
+            if (!c.contains("hdslb.com/bfs")) return c
+            if (c.contains("@")) return c
+            val base = c.substringBefore("?")
+            return "$base@480h.webp"
         }
 
         fun fromUgcRegionDynamicBanner(data: dev.oaktech.biliapi.http.entity.region.RegionDynamic.Banner): CarouselData {
@@ -92,7 +110,7 @@ data class CarouselData(
                 val bvid = avid?.toBv()
                 result.add(
                     CarouselItem(
-                        cover = item.image,
+                        cover = item.image.toBiliThumbnail(),
                         title = item.title,
                         avid = avid,
                         bvid = bvid,
