@@ -63,6 +63,8 @@ fun AnimeTimelineScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val logger = KotlinLogging.logger { }
+    // 专用错误 tag：与 PgcViewModel 一致，便于 `adb logcat -s BV_PGC` 统一抓取 PGC 相关报错。
+    val errorLogger = KotlinLogging.logger("BV_PGC")
     val listState = rememberLazyListState()
 
     var currentTimelineIndex by remember { mutableIntStateOf(0) }
@@ -102,8 +104,10 @@ fun AnimeTimelineScreen(
                 }
             }.onFailure {
                 logger.fInfo { "Get timeline failed: ${it.stackTraceToString()}" }
+                val msg = "获取放送时间表失败: ${it.message}"
+                errorLogger.error(it) { msg }
                 withContext(Dispatchers.Main) {
-                    "获取放送时间表失败: ${it.message}".toast(context)
+                    msg.toast(context)
                 }
             }
         }

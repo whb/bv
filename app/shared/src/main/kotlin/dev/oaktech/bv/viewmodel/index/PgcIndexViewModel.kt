@@ -37,6 +37,8 @@ class PgcIndexViewModel(
 ) : ViewModel() {
     companion object {
         private val logger = KotlinLogging.logger { }
+        // 专用错误 tag：与 PgcViewModel 保持一致，便于 `adb logcat -s BV_PGC` 统一抓取。
+        private val errorLogger = KotlinLogging.logger("BV_PGC")
     }
 
     val indexResultItems = mutableStateListOf<PgcItem>()
@@ -99,8 +101,10 @@ class PgcIndexViewModel(
             logger.info { "load more $pgcType list success, size: ${result.list.size}" }
         }.onFailure {
             logger.fError { "Load $pgcType index list failed: ${it.stackTraceToString()}" }
+            val msg = "加载 $pgcType 索引失败: ${it.localizedMessage}"
+            errorLogger.error(it) { msg }
             withContext(Dispatchers.Main) {
-                "加载 $pgcType 索引失败: ${it.localizedMessage}".toast(BVApp.context)
+                msg.toast(BVApp.context)
             }
         }
         updating = false

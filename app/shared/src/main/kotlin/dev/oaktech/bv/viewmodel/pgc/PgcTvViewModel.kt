@@ -6,7 +6,7 @@ import org.koin.android.annotation.KoinViewModel
 
 @KoinViewModel
 class PgcTvViewModel(
-    override val pgcRepository: PgcRepository
+    pgcRepository: PgcRepository
 ) : PgcViewModel(
     pgcRepository = pgcRepository,
     pgcType = PgcType.Tv

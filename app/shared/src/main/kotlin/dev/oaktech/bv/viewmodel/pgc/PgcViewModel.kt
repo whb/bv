@@ -12,7 +12,6 @@ import dev.oaktech.biliapi.entity.pgc.PgcItem
 import dev.oaktech.biliapi.entity.pgc.PgcType
 import dev.oaktech.biliapi.repositories.PgcRepository
 import dev.oaktech.bv.BVApp
-import dev.oaktech.bv.BuildConfig
 import dev.oaktech.bv.util.addWithMainContext
 import dev.oaktech.bv.util.addAllWithMainContext
 import dev.oaktech.bv.util.fInfo
@@ -20,15 +19,17 @@ import dev.oaktech.bv.util.fWarn
 import dev.oaktech.bv.util.toast
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 abstract class PgcViewModel(
-    open val pgcRepository: PgcRepository,
+    val pgcRepository: PgcRepository,
     val pgcType: PgcType,
 ) : ViewModel() {
     private val logger = KotlinLogging.logger("PgcViewModel[$pgcType]")
+    // 专用错误 tag：初次进入 PGC 时界面弹出的报错信息同步写入 logcat，
+    // 便于用 `adb logcat -s BV_PGC` 抓取（tag 控制在 23 字符内，专用于错误类日志）。
+    private val errorLogger = KotlinLogging.logger("BV_PGC")
 
     /**
      * 轮播图
@@ -98,27 +99,19 @@ abstract class PgcViewModel(
     private suspend fun updateCarousel() {
         logger.fInfo { "Updating $pgcType carousel" }
         runCatching {
-            // 由于未知原因，注入的 PgcRepository 可能获取到的对象为 null
-            var maxRetry = 10
-            while (pgcRepository == null && maxRetry > 0) {
-                delay(10)
-                maxRetry--
-            }
-            if (BuildConfig.DEBUG && maxRetry != 10) {
-                logger.fWarn { "Retry ${10 - maxRetry} times to get pgcRepository" }
-                withContext(Dispatchers.Main) {
-                    "Retry ${10 - maxRetry} times to get pgcRepository($pgcType)".toast(BVApp.context)
-                }
-            }
-
+            // 历史遗留的「重试 10 次等 pgcRepository 注入」hack 已移除：
+            // 根因是 PgcViewModel 曾把 pgcRepository 声明为 open val、子类用 override val 重写，
+            // 父类 init 里的协程会在子类字段赋值前读到 null。改为普通 val 后构造期即已赋值，无需重试。
             val carouselData = pgcRepository.getCarousel(pgcType)
             logger.fInfo { "Find $pgcType carousels, size: ${carouselData.items.size}" }
             carouselItems.addAllWithMainContext(carouselData.items)
             logger.debug { "carouselItems: $carouselItems" }
         }.onFailure {
             logger.fInfo { "Update $pgcType carousel failed: ${it.stackTraceToString()}" }
+            val msg = "加载 $pgcType 轮播图失败: ${it.message}"
+            errorLogger.error(it) { msg }
             withContext(Dispatchers.Main) {
-                "加载 $pgcType 轮播图失败: ${it.message}".toast(BVApp.context)
+                msg.toast(BVApp.context)
             }
         }
     }
@@ -140,8 +133,10 @@ abstract class PgcViewModel(
             updateFeedItems(pgcFeedData)
         }.onFailure {
             logger.fWarn { "Update $pgcType feeds failed: ${it.stackTraceToString()}" }
+            val msg = "加载 $pgcType 推荐数据失败: ${it.message}"
+            errorLogger.error(it) { msg }
             withContext(Dispatchers.Main) {
-                "加载 $pgcType 推荐数据失败: ${it.message}".toast(BVApp.context)
+                msg.toast(BVApp.context)
             }
         }
         withContext(Dispatchers.Main) { updating = false }
