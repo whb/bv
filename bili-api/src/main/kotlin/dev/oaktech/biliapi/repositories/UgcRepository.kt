@@ -41,11 +41,22 @@ class UgcRepository(
     }
 
     suspend fun getRegionFeedRcmd(ugcType: UgcTypeV2, page: UgcFeedPage): UgcFeedData {
-        val responseData = BiliHttpApi.getRegionFeedRcmd(
+        val response = BiliHttpApi.getRegionFeedRcmd(
             displayId = page.nextPage,
             fromRegion = ugcType.tid,
             sessData = authRepository.sessionData
-        ).getResponseData()
+        )
+        // code 62013 = "暂时没有更多内容了"，是「到底 / 被限流」的良性终态，
+        // 不应当作异常抛出（getResponseData 的 else 分支会抛 IllegalStateException）。
+        // 直接返回空结果，hasNext=false，让上层不弹错误、且仍可经滚动重试。
+        if (response.code == 62013 || (response.code == 0 && response.data == null)) {
+            return UgcFeedData(
+                hasNext = false,
+                nextPage = UgcFeedPage(page.nextPage + 1),
+                items = emptyList()
+            )
+        }
+        val responseData = response.getResponseData()
         val ugcFeedData = UgcFeedData.fromRegionFeedRcmd(responseData)
         ugcFeedData.nextPage = UgcFeedPage(page.nextPage + 1)
         return ugcFeedData

@@ -13,6 +13,7 @@ import dev.oaktech.biliapi.entity.ugc.region.UgcFeedPage
 import dev.oaktech.biliapi.repositories.UgcRepository
 import dev.oaktech.bv.BVApp
 import dev.oaktech.bv.util.fInfo
+import dev.oaktech.bv.util.fWarn
 import dev.oaktech.bv.util.getDisplayName
 import dev.oaktech.bv.util.toast
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -86,7 +87,7 @@ class ZoneDetailViewModel(
             nextPage = data.nextPage
             showCarousel = carouselItems.isNotEmpty()
         }.onFailure {
-            logger.fInfo { "load $ugcType data failed: ${it.stackTraceToString()}" }
+            logger.fWarn { "load $ugcType data failed: ${it.stackTraceToString()}" }
             loadFailed = true
             withContext(Dispatchers.Main) {
                 "加载 ${ugcType.getDisplayName(BVApp.context)} 数据失败: ${it.message}".toast(BVApp.context)
@@ -107,7 +108,7 @@ class ZoneDetailViewModel(
                 nextPage = data.nextPage
                 hasMore = data.items.isNotEmpty()
             }.onFailure {
-                logger.fInfo { "load more $ugcType data failed: ${it.stackTraceToString()}" }
+                logger.fWarn { "load more $ugcType data failed: ${it.stackTraceToString()}" }
                 withContext(Dispatchers.Main) {
                     "加载 ${ugcType.getDisplayName(BVApp.context)} 更多推荐失败: ${it.message}".toast(BVApp.context)
                 }

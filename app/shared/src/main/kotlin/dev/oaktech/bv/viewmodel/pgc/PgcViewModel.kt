@@ -139,7 +139,10 @@ abstract class PgcViewModel(
             withContext(Dispatchers.Main) { hasNext = pgcFeedData.hasNext }
             updateFeedItems(pgcFeedData)
         }.onFailure {
-            logger.fInfo { "Update $pgcType feeds failed: ${it.stackTraceToString()}" }
+            logger.fWarn { "Update $pgcType feeds failed: ${it.stackTraceToString()}" }
+            withContext(Dispatchers.Main) {
+                "加载 $pgcType 推荐数据失败: ${it.message}".toast(BVApp.context)
+            }
         }
         withContext(Dispatchers.Main) { updating = false }
     }

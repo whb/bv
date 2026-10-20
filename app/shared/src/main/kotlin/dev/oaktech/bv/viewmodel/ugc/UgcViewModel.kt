@@ -13,6 +13,7 @@ import dev.oaktech.biliapi.entity.ugc.region.UgcFeedPage
 import dev.oaktech.biliapi.repositories.UgcRepository
 import dev.oaktech.bv.BVApp
 import dev.oaktech.bv.util.fInfo
+import dev.oaktech.bv.util.fWarn
 import dev.oaktech.bv.util.toast
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
@@ -47,29 +48,38 @@ abstract class UgcViewModel(
     }
 
     private suspend fun initUgcRegionData() {
+        // 首屏只加载第一页；翻页改为用户滚动到底时按需触发（loadMore）。
+        // 之前这里会紧接着 eagerly 调用 loadMore() 预拉第二页，而 region/feed/rcmd 的
+        // 第二页在 B 站推荐流中很容易返回 code 62013（到底/限流），被当作异常弹出
+        // “更多推荐失败”，并且会提前把 hasMore 置为 false 导致无法继续翻页。
         loadUgcRegionData()
-        loadMore()
     }
 
     suspend fun loadUgcRegionData() {
         if (!hasMore && updating) return
         updating = true
         logger.fInfo { "load ugc $ugcType region data" }
+        // 先加载 feed（核心数据）。轮播与 feed 解耦：轮播失败不应连坐整个 feed。
         runCatching {
-            val carouselData = ugcRepository.getCarousel(ugcType)
             val data = ugcRepository.getRegionFeedRcmd(ugcType, nextPage)
-            carouselItems.clear()
             ugcItems.clear()
-            carouselItems.addAll(carouselData.items)
             ugcItems.addAll(data.items)
             nextPage = data.nextPage
-            showCarousel = carouselItems.isNotEmpty()
         }.onFailure {
-            logger.fInfo { "load $ugcType data failed: ${it.stackTraceToString()}" }
+            logger.fWarn { "load $ugcType data failed: ${it.stackTraceToString()}" }
             withContext(Dispatchers.Main) {
                 "加载 $ugcType 数据失败: ${it.message}".toast(BVApp.context)
             }
         }
+        // 轮播图独立加载，失败仅记日志，不影响 feed 展示
+        carouselItems.clear()
+        runCatching {
+            val carouselData = ugcRepository.getCarousel(ugcType)
+            carouselItems.addAll(carouselData.items)
+        }.onFailure {
+            logger.fWarn { "load $ugcType carousel failed: ${it.stackTraceToString()}" }
+        }
+        showCarousel = carouselItems.isNotEmpty()
         hasMore = true
         updating = false
     }
@@ -95,7 +105,7 @@ abstract class UgcViewModel(
             nextPage = data.nextPage
             hasMore = data.items.isNotEmpty()
         }.onFailure {
-            logger.fInfo { "load more $ugcType data failed: ${it.stackTraceToString()}" }
+            logger.fWarn { "load more $ugcType data failed: ${it.stackTraceToString()}" }
             withContext(Dispatchers.Main) {
                 "加载 $ugcType 更多推荐失败: ${it.message}".toast(BVApp.context)
             }

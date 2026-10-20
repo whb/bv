@@ -154,6 +154,6 @@
             android:enableOnBackInvokedCallback="false"
             android:exported="true"
             android:screenOrientation="landscape"
-            android:theme="@style/Theme.BV.TV.Splash" />
+            android:theme="@style/Theme.BV.TV" />
     </application>
 </manifest>
