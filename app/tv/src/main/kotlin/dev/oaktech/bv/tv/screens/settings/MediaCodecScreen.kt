@@ -60,11 +60,6 @@ import java.util.Locale
 fun MediaCodecScreen(
     modifier: Modifier = Modifier
 ) {
-    LaunchedEffect(Unit) {
-        val list = CodecUtil.parseCodecs()
-        println(list)
-    }
-
     val showLargeTitle by remember { derivedStateOf { true } }
     val titleFontSize by animateFloatAsState(
         targetValue = if (showLargeTitle) 48f else 24f,
@@ -79,7 +74,7 @@ fun MediaCodecScreen(
     LaunchedEffect(Unit) {
         val list = CodecUtil.parseCodecs().filter { it.type == CodecType.Decoder }
         decoderList.swapList(list)
-        currentCodecInfoData = list[0]
+        currentCodecInfoData = list.firstOrNull()
     }
 
     Scaffold(

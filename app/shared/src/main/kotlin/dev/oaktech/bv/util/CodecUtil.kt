@@ -11,7 +11,7 @@ object CodecUtil {
     fun parseCodecs(): List<CodecInfoData> {
         return MediaCodecList(MediaCodecList.ALL_CODECS)
             .codecInfos.toList()
-            .map { CodecInfoData.fromCodecInfo(it) }
+            .mapNotNull { runCatching { CodecInfoData.fromCodecInfo(it) }.getOrNull() }
     }
 }
 
@@ -31,8 +31,11 @@ data class CodecInfoData(
     val achievableFrameRates: List<SupportedFrameRate>
 ) {
     companion object {
-        fun fromCodecInfo(codecInfo: MediaCodecInfo): CodecInfoData {
-            val capabilities = codecInfo.getCapabilitiesForType(codecInfo.supportedTypes.first())
+        fun fromCodecInfo(codecInfo: MediaCodecInfo): CodecInfoData? {
+            val supportedType = codecInfo.supportedTypes.firstOrNull() ?: return null
+            val capabilities = runCatching {
+                codecInfo.getCapabilitiesForType(supportedType)
+            }.getOrNull() ?: return null
             return CodecInfoData(
                 name = codecInfo.name,
                 mimeType = capabilities.mimeType,
@@ -41,7 +44,7 @@ data class CodecInfoData(
                 media = CodecMedia.fromMediaCodecInfo(codecInfo),
                 maxSupportedInstances = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
                     capabilities.maxSupportedInstances else null,
-                colorFormats = capabilities.colorFormats.toList(),
+                colorFormats = runCatching { capabilities.colorFormats.toList() }.getOrNull().orEmpty(),
                 audioBitrateRange = runCatching { with(capabilities.audioCapabilities.bitrateRange) { lower..upper } }.getOrNull(),
                 videoBitrateRange = runCatching { with(capabilities.videoCapabilities.bitrateRange) { lower..upper } }.getOrNull(),
                 videoFrame = runCatching { with(capabilities.videoCapabilities.supportedFrameRates) { lower..upper } }.getOrNull(),
