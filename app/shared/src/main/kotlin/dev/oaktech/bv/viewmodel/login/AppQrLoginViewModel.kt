@@ -56,8 +56,10 @@ class AppQrLoginViewModel(
                 // 串行循环替代周期 Timer：上一次 check 完成后才发起下一次，
                 // 杜绝 poll 请求重叠（重叠时成功 poll 会消费 auth_code，
                 // 使在飞的旧 poll 返回 86038 过期，晚到的 Expired 会把 Success 状态覆盖掉）
+                // 循环靠 terminalReached 退出，绝不在 checkLoginResult 内部取消自身协程，
+                // 否则 Success 分支里正在执行的 addUser 会在挂起点被中断，导致"显示成功但未登录"。
                 checkJob = viewModelScope.launch {
-                    while (true) {
+                    while (!terminalReached) {
                         delay(1000)
                         checkLoginResult()
                     }
@@ -96,15 +98,17 @@ class AppQrLoginViewModel(
 
                 QrLoginState.Expired -> {
                     logger.fInfo { "QR expired" }
+                    // 仅置终态标志，由 while(!terminalReached) 自然退出循环，
+                    // 禁止在此处 checkJob?.cancel()（会取消正在执行本函数的协程）。
                     terminalReached = true
-                    checkJob?.cancel()
                 }
 
                 QrLoginState.Success -> {
                     logger.fInfo { "Login success" }
-                    terminalReached = true
-                    checkJob?.cancel()
-
+                    // 注意：必须先完整执行 addUser，再置终态/退出循环。
+                    // 绝不可在此调用 checkJob?.cancel()——checkJob 就是当前协程，
+                    // 自取消会使下面的 userRepository.addUser（含 Room 写入与登录态持久化）
+                    // 在挂起点被中断，造成"界面显示成功、实际未登录"的回归。
                     val authData = AuthData(
                         uid = qrLoginResult.cookies!!.dedeUserId,
                         uidCkMd5 = qrLoginResult.cookies!!.dedeUserIdCkMd5,
@@ -118,6 +122,9 @@ class AppQrLoginViewModel(
 
                     // BlacklistUtil.checkUid(Prefs.uid)  // [已停用黑名单功能 2026-10-18]
                     userRepository.addUser(authData)
+
+                    // addUser 完整执行完毕后再标记终态，确保登录态已落盘。
+                    terminalReached = true
                 }
 
                 else -> {
