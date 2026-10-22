@@ -65,7 +65,7 @@ object LogCatcherUtil {
     private fun OutputStreamWriter.writeDeviceInfo() {
         val info = BVApp.context.packageManager.getPackageInfo(BVApp.context.packageName, 0)
         appendLine("======== Device info ========")
-        appendLine("App Version: ${info.versionName} (${info.versionCode})")
+        appendLine("App Version: ${info.versionName} (${androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info)})")
         appendLine("Android Version: ${android.os.Build.VERSION.RELEASE} (${android.os.Build.VERSION.SDK_INT})")
         appendLine("Device: ${android.os.Build.DEVICE}")
         appendLine("Model: ${android.os.Build.MODEL}")

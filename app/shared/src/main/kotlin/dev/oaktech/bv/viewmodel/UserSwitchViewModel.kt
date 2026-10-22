@@ -19,7 +19,7 @@ import org.koin.android.annotation.KoinViewModel
 @KoinViewModel
 class UserSwitchViewModel(
     private val userRepository: UserRepository,
-    private val db: AppDatabase = BVApp.getAppDatabase()
+    private val db: AppDatabase
 ) : ViewModel() {
     var loading by mutableStateOf(true)
     var currentUser by mutableStateOf(UserDB(-1, -1, "", "", ""))

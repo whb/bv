@@ -67,7 +67,11 @@ fun BVTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorSchemeTv.primary.toArgb()
+            // API 35+ 强制 edge-to-edge，statusBarColor 已失效
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                @Suppress("DEPRECATION")
+                window.statusBarColor = colorSchemeTv.primary.toArgb()
+            }
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !useDark
         }
     }

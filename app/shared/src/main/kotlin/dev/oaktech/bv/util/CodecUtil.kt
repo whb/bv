@@ -45,9 +45,9 @@ data class CodecInfoData(
                 maxSupportedInstances = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
                     capabilities.maxSupportedInstances else null,
                 colorFormats = runCatching { capabilities.colorFormats.toList() }.getOrNull().orEmpty(),
-                audioBitrateRange = runCatching { with(capabilities.audioCapabilities.bitrateRange) { lower..upper } }.getOrNull(),
-                videoBitrateRange = runCatching { with(capabilities.videoCapabilities.bitrateRange) { lower..upper } }.getOrNull(),
-                videoFrame = runCatching { with(capabilities.videoCapabilities.supportedFrameRates) { lower..upper } }.getOrNull(),
+                audioBitrateRange = runCatching { capabilities.audioCapabilities?.bitrateRange?.let { r -> r.lower..r.upper } }.getOrNull(),
+                videoBitrateRange = runCatching { capabilities.videoCapabilities?.bitrateRange?.let { r -> r.lower..r.upper } }.getOrNull(),
+                videoFrame = runCatching { capabilities.videoCapabilities?.supportedFrameRates?.let { r -> r.lower..r.upper } }.getOrNull(),
                 supportedFrameRates = runCatching { codecInfo.getSupportedFrameRates() }
                     .getOrDefault(emptyList()),
                 achievableFrameRates = runCatching {
@@ -146,8 +146,8 @@ data class SupportedFrameRate(
 private fun MediaCodecInfo.getSupportedFrameRates(): List<SupportedFrameRate> {
     return resolutions.map { (width, height) ->
         val frameRates = runCatching {
-            val videoCapabilities = getCapabilitiesForType(supportedTypes.first()).videoCapabilities
-            videoCapabilities.getSupportedFrameRatesFor(width, height)
+            getCapabilitiesForType(supportedTypes.first()).videoCapabilities
+                ?.getSupportedFrameRatesFor(width, height)
         }.getOrNull()
         SupportedFrameRate(
             resolution = width to height,
@@ -161,8 +161,8 @@ private fun MediaCodecInfo.getSupportedFrameRates(): List<SupportedFrameRate> {
 private fun MediaCodecInfo.getAchievableFrameRates(): List<SupportedFrameRate> {
     return resolutions.map { (width, height) ->
         val frameRates = runCatching {
-            val videoCapabilities = getCapabilitiesForType(supportedTypes.first()).videoCapabilities
-            videoCapabilities.getAchievableFrameRatesFor(width, height)
+            getCapabilitiesForType(supportedTypes.first()).videoCapabilities
+                ?.getAchievableFrameRatesFor(width, height)
         }.getOrNull()
         SupportedFrameRate(
             resolution = width to height,

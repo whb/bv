@@ -24,25 +24,19 @@ object BlacklistUtil {
 
     suspend fun updateBlacklist(context: Context = BVApp.context) {
         logger.fInfo { "updating blacklist" }
-        var blacklistBinary: ByteArray? = null
 
         // download blacklist binary
-        runCatching {
-            blacklistBinary = downloadBlacklist()
-            check(blacklistBinary != null) { "blacklist is null" }
-        }.onFailure {
+        val blacklistBinary = runCatching { downloadBlacklist() }.getOrElse {
             logger.warn { "download blacklist failed: ${it.stackTraceToString()}" }
             return
         }
 
         // validate blacklist binary
-        runCatching {
-            val blacklist = BlacklistNano.parseFrom(blacklistBinary!!)
-            logger.info { "blacklist: [version=${blacklist.version}, count=${blacklist.count}]" }
-        }.onFailure {
+        val blacklist = runCatching { BlacklistNano.parseFrom(blacklistBinary) }.getOrElse {
             logger.warn { "check blacklist validate failed: ${it.stackTraceToString()}" }
             return
         }
+        logger.info { "blacklist: [version=${blacklist.version}, count=${blacklist.count}]" }
 
         // save blacklist binary
         val blacklistDir = File(context.filesDir, BLACKLIST_DIR)
@@ -50,7 +44,7 @@ object BlacklistUtil {
         val blacklistFile = File(blacklistDir, BLACKLIST_FILENAME)
         runCatching {
             blacklistFile.delete()
-            blacklistFile.writeBytes(blacklistBinary!!)
+            blacklistFile.writeBytes(blacklistBinary)
             logger.info { "blacklist saved to ${blacklistFile.absolutePath}" }
         }.onFailure {
             logger.warn { "save blacklist failed: ${it.stackTraceToString()}" }

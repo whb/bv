@@ -34,6 +34,7 @@ import org.koin.android.ext.koin.androidLogger
 import org.koin.core.KoinApplication
 import org.koin.core.annotation.ComponentScan
 import org.koin.core.annotation.Module
+import org.koin.core.annotation.Single
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
 import org.koin.ksp.generated.module
@@ -157,4 +158,7 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "Se
 
 @Module(includes = [BiliApiModule::class])
 @ComponentScan
-class AppModule
+class AppModule {
+    @Single
+    fun appDatabase(): AppDatabase = BVApp.getAppDatabase()
+}

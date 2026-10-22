@@ -25,7 +25,7 @@ import java.util.Date
 @KoinViewModel
 class SearchInputViewModel(
     private val searchRepository: SearchRepository,
-    private val db: AppDatabase = BVApp.getAppDatabase()
+    private val db: AppDatabase
 ) : ViewModel() {
     private val logger = KotlinLogging.logger { }
 

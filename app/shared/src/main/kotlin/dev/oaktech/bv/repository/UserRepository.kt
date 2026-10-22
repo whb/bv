@@ -19,7 +19,7 @@ import java.util.Date
 @Single
 class UserRepository(
     private val authRepository: AuthRepository,
-    private val db: AppDatabase = BVApp.getAppDatabase()
+    private val db: AppDatabase
 ) {
     companion object {
         private val logger = KotlinLogging.logger { }

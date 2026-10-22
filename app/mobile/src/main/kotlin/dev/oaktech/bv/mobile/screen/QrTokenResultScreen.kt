@@ -102,7 +102,7 @@ fun QrTokenResultScreen(
 
     LaunchedEffect(Unit) {
         runCatching {
-            val uri = (context as Activity).intent.getParcelableExtra<Uri>("uri")
+            val uri = (context as Activity).intent.getParcelableExtra("uri", Uri::class.java)
                 ?: throw IllegalArgumentException("Uri not found in intent extras")
             val data = BvScheme.QrToken.fromUri(uri)
                 ?: throw IllegalArgumentException("Invalid QR token URI: $uri")

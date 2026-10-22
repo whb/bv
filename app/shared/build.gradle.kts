@@ -84,6 +84,8 @@ android {
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+    // Koin 注解：关闭未使用的 defaultModule 聚合生成（消除 deprecation 警告；工程只用 AppModule().module）
+    arg("KOIN_DEFAULT_MODULE", "false")
 }
 
 java {
