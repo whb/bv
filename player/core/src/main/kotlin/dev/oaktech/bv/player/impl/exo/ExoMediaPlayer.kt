@@ -7,7 +7,11 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.Renderer
@@ -17,6 +21,7 @@ import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.extractor.DefaultExtractorsFactory
 import dev.oaktech.bv.player.AbstractVideoPlayer
+import dev.oaktech.bv.player.BvMediaCache
 import dev.oaktech.bv.player.OkHttpUtil
 import dev.oaktech.bv.player.VideoPlayerOptions
 import dev.oaktech.bv.util.formatHourMinSec
@@ -51,11 +56,28 @@ class ExoMediaPlayer(
     }
 
     @OptIn(UnstableApi::class)
-    private val dataSourceFactory =
-        OkHttpDataSource.Factory(OkHttpUtil.generateCustomSslOkHttpClient(context)).apply {
+    private val upstreamDataSourceFactory: DataSource.Factory =
+        OkHttpDataSource.Factory(OkHttpUtil.getSharedClient(context)).apply {
             options.userAgent?.let { setUserAgent(it) }
             options.referer?.let { setDefaultRequestProperties(mapOf("referer" to it)) }
         }
+
+    /**
+     * 经过磁盘缓存层包装的数据源工厂：读优先命中本地缓存，写回分片到缓存，
+     * 网络异常时回退到上游，避免缓存故障拖垮播放。
+     */
+    @OptIn(UnstableApi::class)
+    private val dataSourceFactory: DataSource.Factory by lazy {
+        val cache = BvMediaCache.get(context)
+        CacheDataSource.Factory()
+            .setCache(cache)
+            .setUpstreamDataSourceFactory(upstreamDataSourceFactory)
+            .setCacheWriteDataSinkFactory(CacheDataSink.Factory().setCache(cache))
+            .setFlags(
+                CacheDataSource.FLAG_BLOCK_ON_CACHE
+                        or CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
+            )
+    }
 
     init {
         initPlayer()
@@ -71,9 +93,22 @@ class ExoMediaPlayer(
                 }
             )
         }
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                MIN_BUFFER_MS,
+                MAX_BUFFER_MS,
+                BUFFER_FOR_PLAYBACK_MS,
+                BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
+            )
+            // 优先按时间维度缓冲，弱网下更快攒够可播放时长，减少卡顿
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
         mPlayer = ExoPlayer
             .Builder(context)
             .setRenderersFactory(renderersFactory)
+            .setLoadControl(loadControl)
+            // 播放期间持有网络/CPU 唤醒锁，防止 TV/移动端休眠或降频导致掉帧卡顿
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .setSeekForwardIncrementMs(1000 * 10)
             .setSeekBackIncrementMs(1000 * 5)
             .build()
@@ -249,5 +284,11 @@ class ExoMediaPlayer(
     companion object {
         /** AV1 解码兜底检测的等待时间：音频已就绪但这么久还没渲染出首帧，视为解码失败 */
         private const val AV1_DECODE_CHECK_DELAY_MS = 8000L
+
+        // 缓冲策略：比 ExoPlayer 默认（min/max 各 50s）更激进，弱网下更少 re-buffer
+        private const val MIN_BUFFER_MS = 60_000
+        private const val MAX_BUFFER_MS = 120_000
+        private const val BUFFER_FOR_PLAYBACK_MS = 2_500
+        private const val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 5_000
     }
 }
