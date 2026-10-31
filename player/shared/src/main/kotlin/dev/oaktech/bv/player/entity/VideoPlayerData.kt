@@ -103,6 +103,21 @@ data class VideoPlayerDebugInfoData(
     val debugInfo: String = "",
 )
 
+/** 当前缓冲下载速度（字节/秒），由播放器实时上报，供 UI 在缓冲时展示 */
+data class VideoPlayerNetworkSpeedData(
+    val speed: Long = 0L
+)
+
+/** 字节/秒 -> 人类可读速度文本（如 "3.2 MB/s" / "850 KB/s"），无速度返回空串 */
+fun formatNetworkSpeed(bytesPerSec: Long): String {
+    return when {
+        bytesPerSec >= 1024 * 1024 -> "%.1f MB/s".format(java.util.Locale.US, bytesPerSec / (1024.0 * 1024.0))
+        bytesPerSec >= 1024 -> "%.0f KB/s".format(java.util.Locale.US, bytesPerSec / 1024.0)
+        bytesPerSec > 0 -> "$bytesPerSec B/s"
+        else -> ""
+    }
+}
+
 val LocalVideoPlayerSeekData = compositionLocalOf { VideoPlayerSeekData() }
 val LocalVideoPlayerSeekThumbData = compositionLocalOf { VideoPlayerSeekThumbData() }
 val LocalVideoPlayerVideoInfoData = compositionLocalOf { VideoPlayerVideoInfoData() }
@@ -116,3 +131,4 @@ val LocalVideoPlayerConfigData = compositionLocalOf { VideoPlayerConfigData() }
 val LocalVideoPlayerDanmakuMasksData = compositionLocalOf { VideoPlayerDanmakuMasksData() }
 val LocalVideoPlayerVideoShotData = compositionLocalOf { VideoPlayerVideoShotData() }
 val LocalVideoPlayerDebugInfoData = compositionLocalOf { VideoPlayerDebugInfoData() }
+val LocalVideoPlayerNetworkSpeed = compositionLocalOf { VideoPlayerNetworkSpeedData() }

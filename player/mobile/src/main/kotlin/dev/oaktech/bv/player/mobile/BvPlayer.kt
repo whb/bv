@@ -36,6 +36,8 @@ import dev.oaktech.bv.player.entity.LocalVideoPlayerDebugInfoData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerHistoryData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerLoadStateData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerLogsData
+import dev.oaktech.bv.player.entity.LocalVideoPlayerNetworkSpeed
+import dev.oaktech.bv.player.entity.VideoPlayerNetworkSpeedData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerSeekData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerStateData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerVideoInfoData
@@ -96,6 +98,7 @@ fun BvPlayer(
     var isError by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var exception by remember { mutableStateOf<Exception?>(null) }
+    var speed by remember { mutableLongStateOf(0L) }
 
     val typeFilter by remember { mutableStateOf(TypeFilter()) }
     var danmakuConfig by remember { mutableStateOf(DanmakuConfig()) }
@@ -271,6 +274,18 @@ fun BvPlayer(
         mDanmakuPlayer = danmakuPlayer
     }
 
+    // 缓冲时每 1s 采样一次播放器上报的实时下载速度（来自 ExoPlayer 带宽估算），用于缓冲界面展示
+    LaunchedEffect(isBuffering) {
+        if (isBuffering) {
+            while (true) {
+                speed = videoPlayer.tcpSpeed
+                delay(1000)
+            }
+        } else {
+            speed = 0L
+        }
+    }
+
     DisposableEffect(Unit) {
         clockRefreshTimer = countDownTimer(
             millisInFuture = Long.MAX_VALUE,
@@ -308,6 +323,7 @@ fun BvPlayer(
             exception = exception,
             showBackToHistory = showBackToHistory
         ),
+        LocalVideoPlayerNetworkSpeed provides VideoPlayerNetworkSpeedData(speed = speed),
         LocalVideoPlayerDebugInfoData provides VideoPlayerDebugInfoData(
             debugInfo = videoPlayer.debugInfo
         ),

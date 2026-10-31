@@ -14,10 +14,13 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CornerSize
@@ -26,6 +29,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.runtime.Composable
@@ -57,6 +61,7 @@ import androidx.compose.ui.unit.max
 import dev.oaktech.bv.player.entity.Audio
 import dev.oaktech.bv.player.entity.DanmakuType
 import dev.oaktech.bv.player.entity.LocalVideoPlayerConfigData
+import dev.oaktech.bv.player.entity.LocalVideoPlayerNetworkSpeed
 import dev.oaktech.bv.player.entity.LocalVideoPlayerSeekData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerStateData
 import dev.oaktech.bv.player.entity.PlayMode
@@ -66,6 +71,7 @@ import dev.oaktech.bv.player.entity.VideoListItem
 import dev.oaktech.bv.player.entity.VideoPlayerConfigData
 import dev.oaktech.bv.player.entity.VideoPlayerSeekData
 import dev.oaktech.bv.player.entity.VideoPlayerStateData
+import dev.oaktech.bv.player.entity.formatNetworkSpeed
 import dev.oaktech.bv.player.mobile.MaterialDarkTheme
 import dev.oaktech.bv.player.mobile.controller.menu.DanmakuMenu
 import dev.oaktech.bv.player.mobile.controller.menu.DashMenu
@@ -668,9 +674,20 @@ fun Modifier.detectPlayerGestures(
 private fun BufferingTip(
     modifier: Modifier = Modifier
 ) {
-    LoadingIndicator(
-        modifier = modifier.size(120.dp)
-    )
+    val speedText = formatNetworkSpeed(LocalVideoPlayerNetworkSpeed.current.speed)
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        LoadingIndicator(modifier = Modifier.size(120.dp))
+        if (speedText.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = speedText,
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+    }
 }
 
 @Preview(device = "spec:width=1920px,height=1080px")

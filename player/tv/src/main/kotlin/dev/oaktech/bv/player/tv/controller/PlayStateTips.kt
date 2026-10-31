@@ -34,8 +34,10 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
 import androidx.tv.material3.darkColorScheme
+import dev.oaktech.bv.player.entity.LocalVideoPlayerNetworkSpeed
 import dev.oaktech.bv.player.entity.LocalVideoPlayerPaymentData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerStateData
+import dev.oaktech.bv.player.entity.formatNetworkSpeed
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import qrcode.QRCode
@@ -63,8 +65,7 @@ fun PlayStateTips(
         if (videoPlayerStateData.isBuffering && !videoPlayerStateData.isError) {
             BufferingTip(
                 modifier = Modifier
-                    .align(Alignment.Center),
-                speed = ""
+                    .align(Alignment.Center)
             )
         }
         if (videoPlayerStateData.isError) {
@@ -107,12 +108,22 @@ fun PauseIcon(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun BufferingTip(
-    modifier: Modifier = Modifier,
-    speed: String
+    modifier: Modifier = Modifier
 ) {
-    LoadingIndicator(
-        modifier = modifier.size(120.dp)
-    )
+    val speedText = formatNetworkSpeed(LocalVideoPlayerNetworkSpeed.current.speed)
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        LoadingIndicator(modifier = Modifier.size(120.dp))
+        if (speedText.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = speedText,
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+    }
 }
 
 @Composable
@@ -210,8 +221,7 @@ private fun BufferingTipPreview() {
         colorScheme = darkColorScheme()
     ) {
         BufferingTip(
-            modifier = Modifier.padding(10.dp),
-            speed = ""
+            modifier = Modifier.padding(10.dp)
         )
     }
 }

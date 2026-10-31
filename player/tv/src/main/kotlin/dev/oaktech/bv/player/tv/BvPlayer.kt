@@ -21,6 +21,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
@@ -48,6 +49,8 @@ import dev.oaktech.bv.player.entity.LocalVideoPlayerDebugInfoData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerHistoryData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerLoadStateData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerLogsData
+import dev.oaktech.bv.player.entity.LocalVideoPlayerNetworkSpeed
+import dev.oaktech.bv.player.entity.VideoPlayerNetworkSpeedData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerSeekData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerStateData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerVideoInfoData
@@ -123,6 +126,7 @@ fun BvPlayer(
     var isError by remember { mutableStateOf(false) }
     var isBuffering by remember { mutableStateOf(false) }
     var exception by remember { mutableStateOf<Exception?>(null) }
+    var speed by remember { mutableLongStateOf(0L) }
     //var proxyArea by remember { mutableStateOf(ProxyArea.MainLand) }
 
     val typeFilter by remember { mutableStateOf(TypeFilter()) }
@@ -268,6 +272,18 @@ fun BvPlayer(
             videoPlayerVideoInfoData.width / videoPlayerVideoInfoData.height.toFloat()
         defaultAspectRatio = newAspectRatio.takeIf { it > 0 } ?: (16 / 9f)
         updateVideoAspectRatio()
+    }
+
+    // 缓冲时每 1s 采样一次播放器上报的实时下载速度（来自 ExoPlayer 带宽估算），用于缓冲界面展示
+    LaunchedEffect(isBuffering) {
+        if (isBuffering) {
+            while (true) {
+                speed = videoPlayer.tcpSpeed
+                delay(1000)
+            }
+        } else {
+            speed = 0L
+        }
     }
 
     val updateBackToHistory: () -> Unit = {
@@ -524,6 +540,7 @@ fun BvPlayer(
         LocalVideoPlayerDebugInfoData provides VideoPlayerDebugInfoData(
             debugInfo = videoPlayer.debugInfo
         ),
+        LocalVideoPlayerNetworkSpeed provides VideoPlayerNetworkSpeedData(speed = speed),
     ) {
         VideoPlayerController(
             modifier = modifier

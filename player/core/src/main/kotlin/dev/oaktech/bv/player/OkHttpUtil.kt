@@ -1,13 +1,19 @@
 package dev.oaktech.bv.player
 
 import android.content.Context
+import java.net.InetAddress
+import java.net.Socket
+import java.net.UnknownHostException
 import java.security.KeyStore
 import java.security.cert.CertificateFactory
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import javax.net.SocketFactory
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 import okhttp3.ConnectionPool
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 
@@ -69,6 +75,11 @@ object OkHttpUtil {
                 sslContext.socketFactory,
                 trustManagerFactory.trustManagers[0] as X509TrustManager
             )
+            // 放大 TCP 收发窗口：高码流 + 高延迟/弱 WiFi 下直接抬升单连接吞吐上限，
+            // 内核若按 rmem_max 封顶则自动回落，无副作用
+            .socketFactory(ThroughputSocketFactory(rcvBufBytes = 2 * 1024 * 1024, sndBufBytes = 256 * 1024))
+            // DNS 结果缓存：B 站 CDN 域名繁多，避免重复解析；解析抖动时回退旧值不卡
+            .dns(CachingDns(ttlMillis = 5 * 60 * 1000))
             // 复用 TCP/TLS 连接：最多 8 个空闲连接，保活 5 分钟，减少分片间握手
             .connectionPool(ConnectionPool(8, 5, TimeUnit.MINUTES))
             // 优先 HTTP/2 多路复用，降低分片请求的延迟与队头阻塞
@@ -79,5 +90,63 @@ object OkHttpUtil {
             .writeTimeout(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
+    }
+
+    /**
+     * 放大底层 TCP 收发缓冲区的 SocketFactory。
+     * 大码流视频对单连接吞吐敏感：在高带宽-延迟积（BDP）链路（如弱 WiFi、跨网）
+     * 上，默认接收窗口可能成为瓶颈；放大 SO_RCVBUF 让内核能开更大的滑动窗口，
+     * 从而减少“带宽够但窗口不够”导致的吞吐上不去。SO_SNDBUF 同理（影响回传/ACK 节奏）。
+     * 若系统按 rmem_max 封顶，则自动回落到系统上限，不会更差。
+     */
+    private class ThroughputSocketFactory(
+        private val delegate: SocketFactory = SocketFactory.getDefault(),
+        private val rcvBufBytes: Int,
+        private val sndBufBytes: Int
+    ) : SocketFactory() {
+        override fun createSocket(): Socket = delegate.createSocket().apply { tune() }
+        override fun createSocket(host: String?, port: Int): Socket =
+            delegate.createSocket(host, port).apply { tune() }
+        override fun createSocket(host: String?, port: Int, localHost: InetAddress?, localPort: Int): Socket =
+            delegate.createSocket(host, port, localHost, localPort).apply { tune() }
+        override fun createSocket(address: InetAddress?, port: Int): Socket =
+            delegate.createSocket(address, port).apply { tune() }
+        override fun createSocket(address: InetAddress?, port: Int, localAddress: InetAddress?, localPort: Int): Socket =
+            delegate.createSocket(address, port, localAddress, localPort).apply { tune() }
+
+        private fun Socket.tune() {
+            try {
+                setReceiveBufferSize(rcvBufBytes)
+                setSendBufferSize(sndBufBytes)
+            } catch (_: Exception) {
+                // 部分平台忽略该设置，忽略即可
+            }
+        }
+    }
+
+    /**
+     * 带 TTL 的 DNS 缓存。
+     * - 命中且在 TTL 内直接返回，省去重复解析（B 站 CDN 同域名在会话内会反复命中）。
+     * - 解析失败时若有过期缓存，返回旧值而非抛异常，避免一次 DNS 抖动就让播放卡死。
+     */
+    private class CachingDns(
+        private val delegate: Dns = Dns.SYSTEM,
+        private val ttlMillis: Long
+    ) : Dns {
+        private val cache = ConcurrentHashMap<String, Pair<Long, List<InetAddress>>>()
+
+        override fun lookup(hostname: String): List<InetAddress> {
+            val now = System.currentTimeMillis()
+            val cached = cache[hostname]
+            if (cached != null && now - cached.first < ttlMillis) {
+                return cached.second
+            }
+            return try {
+                delegate.lookup(hostname).also { cache[hostname] = now to it }
+            } catch (e: UnknownHostException) {
+                // 解析失败：有旧值就返回旧值，没有再抛出
+                cached?.second ?: throw e
+            }
+        }
     }
 }

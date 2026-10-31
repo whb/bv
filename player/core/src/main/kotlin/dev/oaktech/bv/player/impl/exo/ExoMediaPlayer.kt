@@ -42,6 +42,10 @@ class ExoMediaPlayer(
     private var av1FirstFrameRendered = false
     private val mainScope = CoroutineScope(Dispatchers.Main.immediate)
 
+    /** 最近一次带宽估算（bits/sec），由 onBandwidthEstimate 更新，用于展示缓冲下载速度 */
+    @Volatile
+    private var latestBitrateEstimate: Long = 0L
+
     private val analyticsListener = object : AnalyticsListener {
         override fun onRenderedFirstFrame(
             eventTime: AnalyticsListener.EventTime,
@@ -49,6 +53,15 @@ class ExoMediaPlayer(
             presentationTimeUs: Long
         ) {
             av1FirstFrameRendered = true
+        }
+
+        override fun onBandwidthEstimate(
+            eventTime: AnalyticsListener.EventTime,
+            totalLoadTimeMs: Int,
+            totalBytesLoaded: Long,
+            bandwidthEstimate: Long
+        ) {
+            latestBitrateEstimate = bandwidthEstimate
         }
     }
 
@@ -82,6 +95,9 @@ class ExoMediaPlayer(
             )
             // 优先按时间维度缓冲，弱网下更快攒够可播放时长，减少卡顿
             .setPrioritizeTimeOverSizeThresholds(true)
+            // 大码流按码率换算的缓冲字节数可能极大（默认无上限），给字节数封顶避免 TV 内存爆掉；
+            // 普通码流仍由 120s 时间上限主导，高码流（>~10Mbps）时回落到该字节上限
+            .setTargetBufferBytes(TARGET_BUFFER_BYTES_CAP)
             .build()
         mPlayer = ExoPlayer
             .Builder(context)
@@ -201,7 +217,7 @@ class ExoMediaPlayer(
             mPlayer?.setPlaybackSpeed(value)
         }
     override val tcpSpeed: Long
-        get() = 0L
+        get() = latestBitrateEstimate / 8
 
     override fun onPlaybackStateChanged(playbackState: Int) {
         when (playbackState) {
@@ -270,5 +286,7 @@ class ExoMediaPlayer(
         private const val MAX_BUFFER_MS = 120_000
         private const val BUFFER_FOR_PLAYBACK_MS = 2_500
         private const val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 5_000
+        // 缓冲字节上限：约 150MB，约束高码流下的内存占用（20Mbps 时约 60s 缓冲）
+        private const val TARGET_BUFFER_BYTES_CAP = 150 * 1024 * 1024
     }
 }
