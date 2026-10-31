@@ -95,8 +95,9 @@ class ExoMediaPlayer(
             )
             // 优先按时间维度缓冲，弱网下更快攒够可播放时长，减少卡顿
             .setPrioritizeTimeOverSizeThresholds(true)
-            // 大码流按码率换算的缓冲字节数可能极大（默认无上限），给字节数封顶避免 TV 内存爆掉；
-            // 普通码流仍由 120s 时间上限主导，高码流（>~10Mbps）时回落到该字节上限
+            // 缓冲字节上限改为基于进程堆上限动态计算（见 TARGET_BUFFER_BYTES_CAP 说明），
+            // 仅在内存维度兜底，避免低堆设备（如模拟器 192MB）把样本缓冲撑爆导致 OOM；
+            // 普通/大码流仍由时间上限（MIN/MAX_BUFFER_MS）主导可播放时长。
             .setTargetBufferBytes(TARGET_BUFFER_BYTES_CAP)
             .build()
         mPlayer = ExoPlayer
@@ -286,7 +287,18 @@ class ExoMediaPlayer(
         private const val MAX_BUFFER_MS = 120_000
         private const val BUFFER_FOR_PLAYBACK_MS = 2_500
         private const val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 5_000
-        // 缓冲字节上限：约 150MB，约束高码流下的内存占用（20Mbps 时约 60s 缓冲）
-        private const val TARGET_BUFFER_BYTES_CAP = 150 * 1024 * 1024
+        // 缓冲字节上限：基于进程堆上限动态计算，绝不能硬编码大值。
+        // ExoPlayer 的样本缓冲（DefaultAllocator）分配在 Java 堆上，
+        // 硬编码 150MB 在低堆设备（如本机 192MB 上限）会直接 OOM——
+        // 见 bugreport：java.lang.OutOfMemoryError @ Okio Segment.kt:62（网络读取时堆耗尽）。
+        // 策略：取 maxMemory 的 30%，绝对不超过 80MB，至少 15MB，
+        // 给应用自身、OkHttp/Okio 网络缓冲与解码器留足余量。
+        //   192MB 堆设备 → 约 57MB（≈30Mbps 下 15s 缓冲，足够吸收网络抖动）
+        //   512MB 堆设备 → 封顶 80MB（≈30Mbps 下 21s 缓冲）
+        private val TARGET_BUFFER_BYTES_CAP: Int =
+            (Runtime.getRuntime().maxMemory() * 30 / 100)
+                .coerceAtMost(80L * 1024 * 1024)
+                .coerceAtLeast(15L * 1024 * 1024)
+                .toInt()
     }
 }
