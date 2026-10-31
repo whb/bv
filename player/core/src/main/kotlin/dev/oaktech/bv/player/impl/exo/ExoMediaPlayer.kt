@@ -1,6 +1,8 @@
 package dev.oaktech.bv.player.impl.exo
 
 import android.content.Context
+import android.os.Looper
+import android.os.Process
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -41,6 +43,9 @@ class ExoMediaPlayer(
     private var av1FallbackJob: Job? = null
     private var av1FirstFrameRendered = false
     private val mainScope = CoroutineScope(Dispatchers.Main.immediate)
+
+    /** 播放期间提升主线程调度优先级前的原始值，release 时还原 */
+    private var savedMainThreadPriority: Int? = null
 
     /** 最近一次带宽估算（bits/sec），由 onBandwidthEstimate 更新，用于展示缓冲下载速度 */
     @Volatile
@@ -111,11 +116,45 @@ class ExoMediaPlayer(
             .build()
 
         initListener()
+        // 提升主线程调度优先级，保证卡顿/出错时用户输入仍优先响应
+        boostMainThreadPriority()
     }
 
     private fun initListener() {
         mPlayer?.addListener(this)
         mPlayer?.addAnalyticsListener(analyticsListener)
+    }
+
+    /**
+     * 提升处理输入/UI 的主线程调度优先级。
+     *
+     * 卡顿或出错时，播放器内部消息（buffer/track 选择/state 机）与 UI 输入共用主线程消息队列，
+     * 重活会挤占输入响应。这里把主线程优先级提到 URGENT_DISPLAY(-8)：高于普通后台(10)/默认(0)，
+     * 保证输入及时被调度；但仍低于解码线程(AUDIO -16)，不会饿死解码导致更卡。
+     * release 时通过 [restoreMainThreadPriority] 精确还原，避免对进程其他界面造成长期全局影响。
+     */
+    private fun boostMainThreadPriority() {
+        val mainThread = Looper.getMainLooper().thread
+        if (!mainThread.isAlive) return
+        try {
+            savedMainThreadPriority = Process.getThreadPriority(mainThread.id.toInt())
+            Process.setThreadPriority(mainThread.id.toInt(), Process.THREAD_PRIORITY_URGENT_DISPLAY)
+        } catch (_: Exception) {
+            // 无权限或失败则忽略，不影响播放功能
+        }
+    }
+
+    /** 还原主线程优先级，消除全局副作用 */
+    private fun restoreMainThreadPriority() {
+        val prio = savedMainThreadPriority ?: return
+        try {
+            val mainThread = Looper.getMainLooper().thread
+            if (mainThread.isAlive) Process.setThreadPriority(mainThread.id.toInt(), prio)
+        } catch (_: Exception) {
+            // 忽略：还原失败不影响后续
+        } finally {
+            savedMainThreadPriority = null
+        }
     }
 
     @OptIn(UnstableApi::class)
@@ -146,7 +185,8 @@ class ExoMediaPlayer(
 
     @OptIn(UnstableApi::class)
     override fun prepare() {
-        mPlayer?.setMediaSource(mMediaSource!!)
+        val mediaSource = mMediaSource ?: return
+        mPlayer?.setMediaSource(mediaSource)
         mPlayer?.prepare()
         scheduleAv1DecodeCheck()
     }
@@ -168,7 +208,12 @@ class ExoMediaPlayer(
                 player.playbackState == Player.STATE_READY &&
                 player.playWhenReady
             ) {
-                options.onAv1DecodeFailed?.invoke()
+                // 降级回调由上层实现，可能抛异常；此处兜底，避免主线程被未捕获异常拖崩进程
+                try {
+                    options.onAv1DecodeFailed?.invoke()
+                } catch (_: Exception) {
+                    // 忽略上层降级回调异常，播放器自身仍可用
+                }
             }
         }
     }
@@ -198,7 +243,29 @@ class ExoMediaPlayer(
 
     override fun release() {
         av1FallbackJob?.cancel()
-        mPlayer?.release()
+        av1FallbackJob = null
+        val player = mPlayer ?: run {
+            // 已释放过：仍还原主线程优先级并直接返回，保证幂等
+            restoreMainThreadPriority()
+            return
+        }
+        // 释放前先剥离视频 Surface：MediaCodec 仍持有旧 Surface 时直接 release
+        // 是 Media3 常见的 native 崩溃来源（SIGSEGV），先 clear 掉可消除该风险。
+        try {
+            player.clearVideoSurface()
+        } catch (_: Exception) {
+            // Surface 可能已被系统回收，忽略
+        }
+        // 释放路径必须异常安全：任何异常都绝不能向上冒泡，
+        // 否则会在非预期线程触发未捕获异常 -> 进程被 SIGKILL（data_app_crash）。
+        try {
+            player.release()
+        } catch (_: Exception) {
+            // 重复释放等异常，忽略
+        }
+        mPlayer = null
+        // 还原主线程优先级，消除全局副作用
+        restoreMainThreadPriority()
     }
 
     override val currentPosition: Long
@@ -220,6 +287,9 @@ class ExoMediaPlayer(
     override val tcpSpeed: Long
         get() = latestBitrateEstimate / 8
 
+    // 以下 Player.Listener 回调均在主线程（playbackLooper=main）触发，必须保持轻量：
+    // 不得做同步阻塞重活（网络/IO/大解析），否则会挤占输入响应。重活一律异步到 IO 线程，
+    // 这也是“卡顿/出错时用户输入仍响应”的关键保障之一。
     override fun onPlaybackStateChanged(playbackState: Int) {
         when (playbackState) {
             Player.STATE_IDLE -> mPlayerEventListener?.onIdle()
@@ -274,6 +344,8 @@ class ExoMediaPlayer(
     override val videoHeight: Int
         get() = mPlayer?.videoSize?.height ?: 0
 
+    // 错误回调在主线程触发：仅做轻量转发（上层不应在此同步做网络重试/IO）。
+    // 若需错误后恢复/重试，必须在 IO 线程异步执行。
     override fun onPlayerError(error: PlaybackException) {
         mPlayerEventListener?.onError(error)
     }

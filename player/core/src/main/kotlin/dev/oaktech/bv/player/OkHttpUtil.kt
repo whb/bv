@@ -143,8 +143,12 @@ object OkHttpUtil {
             }
             return try {
                 delegate.lookup(hostname).also { cache[hostname] = now to it }
-            } catch (e: UnknownHostException) {
-                // 解析失败：有旧值就返回旧值，没有再抛出
+            } catch (e: Exception) {
+                // 解析失败（UnknownHostException 及 SecurityException / IllegalArgumentException 等）：
+                // 若有过期缓存则返回旧值，把“连不上”交给连接层去重试/转成可处理的 PlaybackException；
+                // 没有旧值才重新抛出。
+                // 必须在非主线程（OkHttp 调度线程）安全失败——否则未捕获异常会经
+                // KillApplicationHandler 直接 SIGKILL 整个进程（data_app_crash，且无主线程 FATAL EXCEPTION）。
                 cached?.second ?: throw e
             }
         }
