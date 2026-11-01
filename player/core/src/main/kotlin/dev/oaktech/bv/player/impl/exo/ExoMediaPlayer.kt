@@ -3,6 +3,7 @@ package dev.oaktech.bv.player.impl.exo
 import android.content.Context
 import android.os.Looper
 import android.os.Process
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -43,6 +44,17 @@ class ExoMediaPlayer(
     private var av1FallbackJob: Job? = null
     private var av1FirstFrameRendered = false
     private val mainScope = CoroutineScope(Dispatchers.Main.immediate)
+
+    /** 最近一次播放的 URL，用于错误自愈时重建媒体源（MediaSource 不可重复 prepare） */
+    private var lastVideoUrl: String? = null
+    private var lastAudioUrl: String? = null
+    /** 可恢复错误的自愈重试计数，播放恢复正常（READY 且正在播放）时清零 */
+    private var errorRetryCount = 0
+    /** 自愈最多尝试次数，避免对不可恢复错误死循环重试 */
+    private val MAX_RECOVERABLE_RETRIES = 3
+    /** 自愈前短暂停顿，给 TV 帧率切换导致的 Surface 重建留出沉降时间 */
+    private val RECOVERABLE_RETRY_DELAY_MS = 800L
+    private val TAG = "ExoMediaPlayer"
 
     /** 播放期间提升主线程调度优先级前的原始值，release 时还原 */
     private var savedMainThreadPriority: Int? = null
@@ -164,6 +176,17 @@ class ExoMediaPlayer(
 
     @OptIn(UnstableApi::class)
     override fun playUrl(videoUrl: String?, audioUrl: String?) {
+        lastVideoUrl = videoUrl
+        lastAudioUrl = audioUrl
+        mMediaSource = buildMediaSource(videoUrl, audioUrl)
+    }
+
+    /**
+     * 构建合并媒体源（视频轨 + 可选音频轨）。抽成独立方法供 [playUrl] 与错误自愈复用：
+     * MediaSource 实例只能 prepare 一次，自愈时必须用新实例重建，否则 ExoPlayer 会复用失败。
+     */
+    @OptIn(UnstableApi::class)
+    private fun buildMediaSource(videoUrl: String?, audioUrl: String?): MediaSource {
         // MStar / Realtek 等平台的 AV1 解码器注册的是私有 mime video/av1，
         // 需要重写视频轨 mime 才能被 ExoPlayer 找到，见 Av1MimeRewriteExtractorsFactory
         val extractorsFactory = if (options.enableAv1MimeRewrite) {
@@ -180,7 +203,7 @@ class ExoMediaPlayer(
         }
 
         val mediaSources = listOfNotNull(videoMediaSource, audioMediaSource)
-        mMediaSource = MergingMediaSource(*mediaSources.toTypedArray())
+        return MergingMediaSource(*mediaSources.toTypedArray())
     }
 
     @OptIn(UnstableApi::class)
@@ -301,6 +324,8 @@ class ExoMediaPlayer(
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         if (isPlaying) {
+            // 真正恢复播放，重置自愈计数，允许后续错误再次自愈
+            errorRetryCount = 0
             mPlayerEventListener?.onPlay()
         } else {
             mPlayerEventListener?.onPause()
@@ -344,10 +369,50 @@ class ExoMediaPlayer(
     override val videoHeight: Int
         get() = mPlayer?.videoSize?.height ?: 0
 
-    // 错误回调在主线程触发：仅做轻量转发（上层不应在此同步做网络重试/IO）。
-    // 若需错误后恢复/重试，必须在 IO 线程异步执行。
+    // 错误回调在主线程触发：仅做轻量转发或自愈（上层不应在此同步做网络重试/IO）。
+    // 可恢复的瞬时错误（网络抖动、直播窗口落后、TV 帧率切换导致 Surface 重建引发的
+    // 编解码器资源忙/初始化失败等）尝试原地自愈：重建媒体源并从出错位置续播，
+    // 避免播放器变成死态后被迫退出播放页。自愈次数耗尽或错误不可恢复才转发上层。
     override fun onPlayerError(error: PlaybackException) {
+        if (isRecoverable(error) && errorRetryCount < MAX_RECOVERABLE_RETRIES) {
+            errorRetryCount++
+            val resumePos = currentPosition
+            Log.w(TAG, "播放错误自愈 #$errorRetryCount (code=${error.errorCode}, ${error.message})，重建媒体源续播 @${resumePos}ms")
+            mainScope.launch {
+                delay(RECOVERABLE_RETRY_DELAY_MS)
+                val player = mPlayer ?: return@launch
+                val rebuilt = buildMediaSource(lastVideoUrl, lastAudioUrl)
+                mMediaSource = rebuilt
+                try {
+                    // 复用同一 ExoPlayer 实例（保留 Surface），重建媒体源续播
+                    player.setMediaSource(rebuilt)
+                    player.prepare()
+                    player.seekTo(resumePos)
+                    player.playWhenReady = true
+                    player.play()
+                } catch (e: Exception) {
+                    // 自愈执行异常，回退到上层错误流程
+                    Log.e(TAG, "播放错误自愈失败，转发上层", e)
+                    mPlayerEventListener?.onError(error)
+                }
+            }
+            return
+        }
         mPlayerEventListener?.onError(error)
+    }
+
+    /** 判断是否为可原地自愈的瞬时错误；非此类（如格式不支持/DRM）直接走上层错误流程 */
+    private fun isRecoverable(error: PlaybackException): Boolean {
+        return when (error.errorCode) {
+            PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED -> true
+            else -> false
+        }
     }
 
     companion object {
