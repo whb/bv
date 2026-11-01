@@ -1,6 +1,7 @@
 package dev.oaktech.bv.player.impl.exo
 
 import android.content.Context
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
@@ -11,10 +12,13 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheDataSink
+import androidx.media3.datasource.cache.CacheKeyFactory
 import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -39,6 +43,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.IOException
 import java.util.concurrent.Executors
 
 @OptIn(UnstableApi::class)
@@ -114,31 +119,55 @@ class ExoMediaPlayer(
             options.referer?.let { setDefaultRequestProperties(mapOf("referer" to it)) }
         }
 
-    /** 播放用的数据源：在磁盘缓存之上包一层 CacheDataSource。
-     * 不设置写数据槽（write data sink），因此为只读缓存：播放时只从缓存读取（命中则省网）、
-     * 未命中回源，但绝不写盘——避免播放时产生额外磁盘写入（之前“边看边缓存”正是因 eMMC 写饱和
-     * 导致 TV 卡顿的根因）。暂停时的预取写入由独立的 CacheWriter 负责（见 [startPrefetch]）。 */
+    /** 播放用的数据源：磁盘缓存 + 网络回源，**真正的只读**（命中缓存则完全不出网）。
+     *
+     * ⚠️ 坑（实测踩到）：`CacheDataSource.Factory` 在**没有**调用 `setCacheWriteDataSinkFactory`
+     * 时会自动 new 一个 `CacheDataSink.Factory().setCache(cache)`（见 media3 1.11 的
+     * createDataSourceInternal 字节码），也就是"不设写槽"≠只读，播放时照样按 5MB 分片写盘。
+     * 这正是"刚播放就冒出若干 .exo 文件"、以及早前 eMMC 写饱和卡顿的真正原因。
+     * 只有直接调构造函数、把 cacheWriteDataSink 传 null 才是真只读。
+     * 写盘只允许由暂停预取的 CacheWriter 完成（见 [startPrefetch]）。 */
     @OptIn(UnstableApi::class)
-    private val dataSourceFactory: DataSource.Factory =
-        CacheDataSource.Factory()
-            .setCache(cache)
-            .setUpstreamDataSourceFactory(upstreamFactory)
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    private val dataSourceFactory: DataSource.Factory = DataSource.Factory {
+        CacheDataSource(
+            cache,
+            upstreamFactory.createDataSource(),
+            FileDataSource(),
+            null, // 无写数据槽 = 只读，绝不写盘
+            CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR,
+            null,
+            CacheKeyFactory.DEFAULT
+        )
+    }
+
+    /** 预取取消标志：cancelPrefetch 置 true，预取上游每次 read 前检查，命中即抛异常中断读取 */
+    @Volatile
+    private var prefetchCanceled = false
+
+    /** 预取上游：限速 OkHttp 源 + 可取消包装（保证恢复播放/跳转时能立刻停住） */
+    @OptIn(UnstableApi::class)
+    private val prefetchUpstreamFactory: DataSource.Factory = DataSource.Factory {
+        CancellableDataSource(
+            OkHttpDataSource.Factory(
+                OkHttpUtil.getThrottledClient(context, PREFETCH_MAX_BYTES_PER_SEC)
+            ).apply {
+                options.userAgent?.let { setUserAgent(it) }
+                options.referer?.let { setDefaultRequestProperties(mapOf("referer" to it)) }
+            }.createDataSource()
+        ) { prefetchCanceled }
+    }
 
     /** 预取专用可写缓存数据源：带写数据槽，让 CacheWriter 把后续段写入磁盘缓存；
-     * 上游使用限速客户端，避免占满带宽/eMMC；读取时命中已缓存段则直接复用。 */
+     * 上游使用限速客户端，避免占满带宽/eMMC；读取时命中已缓存段则直接复用。
+     *
+     * 上游再包一层 [CancellableDataSource]：`CacheWriter.cache()` 只在“块”之间检查取消标志，
+     * 而我们的 DataSpec.length = -1（读到末尾），一整块就是整个剩余文件，
+     * 只靠 `cacheWriter.cancel()` 根本停不下来（实测恢复播放后仍以 ~2MB/s 继续写到 EOF）。 */
     @OptIn(UnstableApi::class)
     private val prefetchCacheDataSource: CacheDataSource =
         CacheDataSource.Factory()
             .setCache(cache)
-            .setUpstreamDataSourceFactory(
-                OkHttpDataSource.Factory(
-                    OkHttpUtil.getThrottledClient(context, PREFETCH_MAX_BYTES_PER_SEC)
-                ).apply {
-                    options.userAgent?.let { setUserAgent(it) }
-                    options.referer?.let { setDefaultRequestProperties(mapOf("referer" to it)) }
-                }
-            )
+            .setUpstreamDataSourceFactory(prefetchUpstreamFactory)
             .setCacheWriteDataSinkFactory(CacheDataSink.Factory().setCache(cache))
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
             .createDataSource()
@@ -465,6 +494,7 @@ class ExoMediaPlayer(
         val audioStart = audioUrl?.let { cachedFrontier(it) }
         cacheStateInternal = VideoPlayerCacheState.Caching
         cacheSpeedInternal = 0L
+        prefetchCanceled = false
         // 代次：主线程每次启动/取消预取都会自增，后台线程据此判断结果是否已过期（被取消）
         val generation = ++prefetchGeneration
         Log.i(TAG, "暂停预取启动：videoStart=${videoStart}B audioStart=${audioStart}B")
@@ -555,6 +585,8 @@ class ExoMediaPlayer(
     /** 取消暂停预取：停止 CacheWriter 并取消协程，置回无缓存任务状态（恢复播放/跳转/停止时调用） */
     private fun cancelPrefetch() {
         prefetchGeneration++
+        // 先置取消标志：让正在阻塞读取的上游立刻抛异常退出（比 cacheWriter.cancel 更快更可靠）
+        prefetchCanceled = true
         cacheWriter?.cancel()
         cacheWriter = null
         prefetchJob?.cancel()
@@ -728,5 +760,42 @@ class ExoMediaPlayer(
                 .coerceAtMost(80L * 1024 * 1024)
                 .coerceAtLeast(15L * 1024 * 1024)
                 .toInt()
+    }
+}
+
+/**
+ * 预取上游的“可取消”包装：取消标志置位后，下一次 read 立即抛异常，
+ * 让阻塞在 `CacheWriter.cache()` 里的线程尽快退出。
+ * 仅靠 `CacheWriter.cancel()` 不够——它只在块之间检查取消，而预取的 DataSpec 是“读到末尾”，
+ * 一整块就是整个剩余文件，恢复播放后仍会持续写盘。
+ */
+@OptIn(UnstableApi::class)
+private class CancellableDataSource(
+    private val upstream: DataSource,
+    private val isCanceled: () -> Boolean
+) : BaseDataSource(true) {
+
+    override fun open(dataSpec: DataSpec): Long {
+        transferInitializing(dataSpec)
+        val length = upstream.open(dataSpec)
+        transferStarted(dataSpec)
+        return length
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (isCanceled()) throw IOException("prefetch canceled")
+        val read = upstream.read(buffer, offset, length)
+        if (read != C.RESULT_END_OF_INPUT) bytesTransferred(read)
+        return read
+    }
+
+    override fun getUri(): Uri? = upstream.uri
+
+    override fun close() {
+        try {
+            upstream.close()
+        } finally {
+            transferEnded()
+        }
     }
 }
