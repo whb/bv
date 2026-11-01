@@ -10,19 +10,23 @@ import java.io.File
 /**
  * 视频磁盘缓存单例（进程级）。
  *
- * 仅用于“暂停时预取”把后续视频段落盘：LRU 上限 [MAX_CACHE_BYTES]，超出自动淘汰最旧内容，
- * 从而把硬盘占用控制在可接受范围（见 [androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor]）。
+ * 承载两类写入，二者写入【同一个】缓存、共享 [MAX_CACHE_BYTES] 的 LRU 上限：
+ * 1. 播放即缓存（media3 默认机制）：ExoPlayer 播放时把消费到的视频段写入缓存，
+ *    恢复播放/跳转/网络抖动时命中缓存可更快续播；
+ * 2. 暂停预取：暂停时由 CacheWriter 把“已缓存字节前沿”之后的后续段继续写入，
+ *    预取从播放已缓存的位置续写，二者通过同一缓存自然衔接。
  *
- * 播放时并不写盘（ExoPlayer 使用只读缓存数据源），因此该缓存只会在暂停预取时增长，
- * 并由 LRU 自然回收，不会无限膨胀。详见 ExoMediaPlayer 的暂停预取逻辑。
+ * LRU 上限 [MAX_CACHE_BYTES]，超出自动淘汰最旧内容，把硬盘占用控制在可接受范围
+ * （见 [androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor]）。
+ * 播放新视频前会清空（见 ExoMediaPlayer.clearCacheAsync），缓存区只保留当前视频。
  */
 object VideoCacheProvider {
     @Volatile
     private var cache: Cache? = null
     private val lock = Any()
 
-    /** 磁盘缓存上限：500 MB，LRU 淘汰最旧内容，控制硬盘占用 */
-    const val MAX_CACHE_BYTES = 500L * 1024 * 1024
+    /** 磁盘缓存上限：1 GB（播放缓存与暂停预取共享），LRU 淘汰最旧内容，控制硬盘占用 */
+    const val MAX_CACHE_BYTES = 1024L * 1024 * 1024
 
     fun get(context: Context): Cache {
         return cache ?: synchronized(lock) {

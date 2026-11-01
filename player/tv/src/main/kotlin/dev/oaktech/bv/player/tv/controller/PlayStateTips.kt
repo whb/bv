@@ -143,11 +143,12 @@ fun CachingTip(
     modifier: Modifier = Modifier
 ) {
     val cacheSpeedData = LocalVideoPlayerCacheSpeed.current
-    // 三态文案：正在缓存（附实时速度）/ 空间满 / 完成
+    // 四态文案：正在缓存（附实时速度）/ 空间满 / 完成 / 中断
     val title = when (cacheSpeedData.state) {
         VideoPlayerCacheState.Caching -> "正在缓存"
         VideoPlayerCacheState.Full -> "缓存空间满"
         VideoPlayerCacheState.Done -> "缓存完成"
+        VideoPlayerCacheState.Error -> "缓存中断"
         VideoPlayerCacheState.None -> return
     }
     val speedText = if (cacheSpeedData.state == VideoPlayerCacheState.Caching) {

@@ -20,6 +20,7 @@
 
 ## 已实现功能（截至 2026-10-15）
 - 双架构 APK；弹幕全局开关（设置→播放设置→弹幕，默认关，移动端 BvPlayer 总开关已补）；"我的关注"up 主视频列表 WBI 签名根因修复 + "没有视频"空态；主菜单"分区"功能（ZoneGrid→ZoneDetail）。
+- **暂停时磁盘缓冲预取（2026-11-01）**：仅暂停时用 `CacheWriter` 把后续段落盘，播放期 `CacheDataSource` 只读绝不写盘（规避 eMMC 写饱和卡顿）；LRU 500MB 上限、限速 4MB/s、BACKGROUND 线程。状态机 `VideoPlayerCacheState{None,Caching,Full,Done}`（Done/Full 粘性→提示常驻），UI 分别显示"正在缓存+速度 / 缓存空间满 / 缓存完成"。预取起点必须用**字节**前沿（`onLoadCompleted` 的 `dataSpec.position+bytesLoaded`），不能用毫秒 `bufferedPosition`。缓存策略：**只保留当前播放视频**——`playUrl()` 里 `VideoCacheProvider.clear()` 按 key `removeResource` 清空（不可删目录，会破坏 SimpleCache 索引），清理任务 post 到单线程预取执行器以保证"先清空后预取"；错误自愈不走 `playUrl`，故不会误清。
 
 ## 已知坑与修复
 - **Compose 1.8 + R8 + Android 9 闪退（已修复 2026-10-19）**：release 包在 Android 9 设备（雷鸟）draw 阶段崩 `IllegalStateException: LayoutNode should be attached to an owner`。根因：Compose 1.8 将 `ViewLayerContainer` 移至 `androidx.compose.ui.graphics.layer.view`，但 consumer proguard 规则仍 keep 旧包名，R8 删除 framework hidden API `dispatchGetDisplayList()` 的 override。修复：`app/proguard-rules.pro` 已加 keep 规则。若再遇类似"debug 稳 release 崩"的 Compose 内部 ISE，先反混淆（retrace + mapping）再对照 issuetracker。

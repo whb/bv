@@ -15,7 +15,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
-import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheKeyFactory
@@ -105,7 +104,7 @@ class ExoMediaPlayer(
         }
     }
 
-    /** 暂停预取写入的磁盘缓存（进程级单例，LRU 上限 500MB） */
+    /** 磁盘缓存（进程级单例，LRU 上限 1GB）：播放边播边缓存与暂停预取写入同一缓存，共享该上限 */
     private val cache = VideoCacheProvider.get(context)
 
     /** 暂停预取的最大下载速率：默认 4 MB/s，避免占满带宽/eMMC，不抢占正在播放的流 */
@@ -119,26 +118,24 @@ class ExoMediaPlayer(
             options.referer?.let { setDefaultRequestProperties(mapOf("referer" to it)) }
         }
 
-    /** 播放用的数据源：磁盘缓存 + 网络回源，**真正的只读**（命中缓存则完全不出网）。
+    /**
+     * 播放用的数据源：磁盘缓存 + 网络回源，**恢复 media3 默认「播放即缓存」机制**
+     * （命中缓存则跳过网络；未命中则边播边把消费到的段写入缓存，供后续续播/跳转命中）。
      *
-     * ⚠️ 坑（实测踩到）：`CacheDataSource.Factory` 在**没有**调用 `setCacheWriteDataSinkFactory`
-     * 时会自动 new 一个 `CacheDataSink.Factory().setCache(cache)`（见 media3 1.11 的
-     * createDataSourceInternal 字节码），也就是"不设写槽"≠只读，播放时照样按 5MB 分片写盘。
-     * 这正是"刚播放就冒出若干 .exo 文件"、以及早前 eMMC 写饱和卡顿的真正原因。
-     * 只有直接调构造函数、把 cacheWriteDataSink 传 null 才是真只读。
-     * 写盘只允许由暂停预取的 CacheWriter 完成（见 [startPrefetch]）。 */
+     * 与暂停预取写入【同一个】缓存：预取（CacheWriter）从 [cachedFrontier] 返回的字节前沿续写，
+     * 二者因此自然衔接——暂停时接着播放已缓存的位置继续盘，恢复播放时优先读缓存。
+     * 限速只用在预取（见 [prefetchUpstreamFactory]），播放走全速共享客户端，不拖慢正在播放的流。
+     *
+     * 说明：早前为规避 eMMC 写饱和，这里曾用「只读」实现（构造函数传 cacheWriteDataSink = null）。
+     * 现按需求恢复默认的边播边缓存，走 Factory DSL 并显式设置写数据槽即可。
+     */
     @OptIn(UnstableApi::class)
-    private val dataSourceFactory: DataSource.Factory = DataSource.Factory {
-        CacheDataSource(
-            cache,
-            upstreamFactory.createDataSource(),
-            FileDataSource(),
-            null, // 无写数据槽 = 只读，绝不写盘
-            CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR,
-            null,
-            CacheKeyFactory.DEFAULT
-        )
-    }
+    private val dataSourceFactory: DataSource.Factory = CacheDataSource.Factory()
+        .setCache(cache)
+        .setUpstreamDataSourceFactory(upstreamFactory)
+        .setCacheWriteDataSinkFactory(CacheDataSink.Factory().setCache(cache))
+        .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        .setCacheKeyFactory(CacheKeyFactory.DEFAULT)
 
     /** 预取取消标志：cancelPrefetch 置 true，预取上游每次 read 前检查，命中即抛异常中断读取 */
     @Volatile
@@ -452,8 +449,9 @@ class ExoMediaPlayer(
     }
 
     // ===================== 暂停预取（磁盘缓冲） =====================
-    // 仅在暂停时把后续视频段写入磁盘缓存：恢复播放时命中缓存可抗网络抖动；
-    // 播放时 ExoPlayer 用 READ_ONLY 缓存数据源不会写盘，避免 eMMC 写饱和卡顿。
+    // 仅在暂停时把后续视频段写入磁盘缓存：恢复播放时命中缓存可抗网络抖动。
+    // 播放时已恢复 media3 默认的「边播边缓存」（见 [dataSourceFactory]），与预取写入同一缓存，
+    // 预取从 [cachedFrontier] 已缓存字节前沿续写，二者无缝衔接。
     // 预取在 BACKGROUND 优先级单线程、限速下载，不抢占正在播放的视频流与用户输入。
 
     /**
@@ -525,7 +523,13 @@ class ExoMediaPlayer(
      * 本方法在后台线程执行，不访问 ExoPlayer。
      *
      * @return 读完/已全部命中缓存 → [VideoPlayerCacheState.Done]；
-     *         磁盘缓存已达上限（无法再存更多）→ [VideoPlayerCacheState.Full]
+     *         磁盘缓存已达上限（无法再存更多）→ [VideoPlayerCacheState.Full]；
+     *         因网络/IO 错误提前结束（部分已缓存）→ [VideoPlayerCacheState.Error]（**不能谎报为完成**）。
+     *
+     * ⚠️ 早前实现把 `writer.cache()` 的异常直接吞掉并 return Done，导致“只缓存了一小部分就显示
+     * 缓存完成”的假象——B 站签名 URL 过期、CDN 断流等都会让预取中途抛异常。这里改为：
+     * 区分“取消”与“真实错误”，真实错误先有限重试（绕过偶发断流），仍失败才如实报 Error，
+     * 且“空间满”主动 cancel 触发的异常必须判为 Full 而非误报。
      */
     @OptIn(UnstableApi::class)
     private fun prefetchUrl(url: String, startByte: Long): VideoPlayerCacheState {
@@ -542,11 +546,8 @@ class ExoMediaPlayer(
         val fullThreshold = (VideoCacheProvider.MAX_CACHE_BYTES * CACHE_FULL_THRESHOLD_RATIO).toLong()
         var overflowBytes = 0L
         var reachedFull = false
-        val writer = CacheWriter(
-            prefetchCacheDataSource,
-            dataSpec,
-            null
-        ) { _, _, newBytesCached ->
+        // 进度回调复用：跨重试累计，避免每次重头计速；空间满时主动 cancel 并标记
+        val progressListener = CacheWriter.ProgressListener { _, _, newBytesCached ->
             // 估算瞬时下载速度（每 CACHE_SPEED_WINDOW_MS 滑动窗口），供 UI 显示缓存速度
             cacheSampleBytes += newBytesCached
             val now = System.currentTimeMillis()
@@ -566,20 +567,47 @@ class ExoMediaPlayer(
                 }
             }
         }
-        cacheWriter = writer
-        try {
-            writer.cache()
-        } catch (_: Exception) {
-            // 预取失败（网络/被取消）忽略，不影响播放
-        } finally {
-            cacheWriter = null
-            // 下载在窗口内快速结束（或数据量很小）时用总平均速度兜底，避免只显示“正在缓存”而无速度
-            val totalDt = System.currentTimeMillis() - startMs
-            if (cacheSpeedInternal == 0L && cacheSampleBytes > 0 && totalDt > 0) {
-                cacheSpeedInternal = cacheSampleBytes * 1000L / totalDt
+
+        var failed = false
+        var attempt = 0
+        while (attempt <= PREFETCH_MAX_RETRIES) {
+            attempt++
+            val writer = CacheWriter(prefetchCacheDataSource, dataSpec, null, progressListener)
+            cacheWriter = writer
+            val canceled = try {
+                writer.cache()
+                false
+            } catch (e: Exception) {
+                // “空间满”是我们主动 cancel 触发的 IOException，必须判为 Full，不可当错误处理/重试
+                if (reachedFull) return VideoPlayerCacheState.Full
+                // 取消（恢复播放/跳转）引发的异常：交由代次校验屏蔽，这里直接结束
+                if (prefetchCanceled && e is IOException && e.message == "prefetch canceled") {
+                    true
+                } else {
+                    // 真实网络/IO 错误：记录日志，进入重试或最终报 Error
+                    Log.w(TAG, "暂停预取第 $attempt/${PREFETCH_MAX_RETRIES + 1} 次失败（部分已缓存），将重试", e)
+                    failed = true
+                    false
+                }
+            } finally {
+                cacheWriter = null
             }
+            if (canceled || prefetchCanceled) return VideoPlayerCacheState.None
+            if (!failed) break // 成功写满（到末尾，或中途触发 Full 已在上面 return）
+            // 失败：退避后重试；重试前若已被取消则中止
+            if (prefetchCanceled) return VideoPlayerCacheState.None
+            if (attempt <= PREFETCH_MAX_RETRIES) Thread.sleep(PREFETCH_RETRY_BACKOFF_MS)
         }
-        return if (reachedFull) VideoPlayerCacheState.Full else VideoPlayerCacheState.Done
+        // 下载在窗口内快速结束（或数据量很小）时用总平均速度兜底，避免只显示“正在缓存”而无速度
+        val totalDt = System.currentTimeMillis() - startMs
+        if (cacheSpeedInternal == 0L && cacheSampleBytes > 0 && totalDt > 0) {
+            cacheSpeedInternal = cacheSampleBytes * 1000L / totalDt
+        }
+        return when {
+            reachedFull -> VideoPlayerCacheState.Full
+            failed -> VideoPlayerCacheState.Error
+            else -> VideoPlayerCacheState.Done
+        }
     }
 
     /** 取消暂停预取：停止 CacheWriter 并取消协程，置回无缓存任务状态（恢复播放/跳转/停止时调用） */
@@ -738,6 +766,12 @@ class ExoMediaPlayer(
 
         /** 暂停状态下跳转后，延迟重启预取的等待时间（等播放器上报新的字节前沿） */
         private const val PREFETCH_RESTART_DELAY_MS = 800L
+
+        /** 暂停预取遇到网络/IO 错误时的最大重试次数（绕过 B 站 CDN 偶发断流；0 表示不重试） */
+        private const val PREFETCH_MAX_RETRIES = 2
+
+        /** 重试退避时间（毫秒）；在后台单线程 sleep，不阻塞主线程/播放 */
+        private const val PREFETCH_RETRY_BACKOFF_MS = 1000L
 
         /** 缓存下载速度采样窗口（毫秒）：越小越灵敏，但抖动越大 */
         private const val CACHE_SPEED_WINDOW_MS = 300L
