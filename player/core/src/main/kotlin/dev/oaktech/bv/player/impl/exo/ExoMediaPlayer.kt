@@ -22,8 +22,6 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
-import androidx.media3.exoplayer.source.LoadEventInfo
-import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -75,11 +73,12 @@ class ExoMediaPlayer(
     private var latestBitrateEstimate: Long = 0L
 
     /**
-     * 各媒体 URL 已加载到的字节前沿（file byte offset，来自 onLoadCompleted 的 DataSpec）。
-     * 暂停预取需要字节偏移，而 player.bufferedPosition 是毫秒——不能混用；
-     * 这里用播放过程中真实上报的字节位置作为预取起点，既正确又能贴合当前播放位置向前缓存。
+     * 是否已经渲染出首帧。暂停预取以它为门槛：进入播放器、切清晰度/切编码等初始化阶段
+     * 会短暂 pause()，此时还没出画面，若也触发预取就会出现"刚打开播放器就冒出几个 5MB
+     * 缓存文件"的假象，纯属白写盘。
      */
-    private val loadedBytesByUri = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    @Volatile
+    private var firstFrameRendered = false
 
     private val analyticsListener = object : AnalyticsListener {
         override fun onRenderedFirstFrame(
@@ -88,6 +87,7 @@ class ExoMediaPlayer(
             presentationTimeUs: Long
         ) {
             av1FirstFrameRendered = true
+            firstFrameRendered = true
         }
 
         override fun onBandwidthEstimate(
@@ -97,20 +97,6 @@ class ExoMediaPlayer(
             bandwidthEstimate: Long
         ) {
             latestBitrateEstimate = bandwidthEstimate
-        }
-
-        override fun onLoadCompleted(
-            eventTime: AnalyticsListener.EventTime,
-            loadEventInfo: LoadEventInfo,
-            mediaLoadData: MediaLoadData
-        ) {
-            // 记录该 URL 已加载到的字节位置（position 为字节偏移，bytesLoaded 为本段字节数），
-            // 供暂停预取从“当前播放位置之后的字节”开始缓存。
-            val uri = loadEventInfo.dataSpec.uri.toString()
-            val endPos = loadEventInfo.dataSpec.position + loadEventInfo.bytesLoaded
-            if (endPos > 0) {
-                loadedBytesByUri.merge(uri, endPos) { a, b -> maxOf(a, b) }
-            }
         }
     }
 
@@ -284,8 +270,8 @@ class ExoMediaPlayer(
         // 清空排在预取线程上执行（与预取任务天然串行），既不阻塞主线程也不抢用户输入。
         cancelPrefetch()
         mainHandler.removeCallbacks(prefetchRestart)
-        // 上一部视频的字节前沿对新视频无意义，丢弃
-        loadedBytesByUri.clear()
+        // 新视频尚未出画面：在首帧渲染前不再允许触发预取写入
+        firstFrameRendered = false
         clearCacheAsync()
         lastVideoUrl = videoUrl
         lastAudioUrl = audioUrl
@@ -441,11 +427,27 @@ class ExoMediaPlayer(
     // 播放时 ExoPlayer 用 READ_ONLY 缓存数据源不会写盘，避免 eMMC 写饱和卡顿。
     // 预取在 BACKGROUND 优先级单线程、限速下载，不抢占正在播放的视频流与用户输入。
 
+    /**
+     * 该 URL 在磁盘缓存中已覆盖到的最远字节偏移（完全没有缓存则为 0）。
+     * 空洞片段（length <= 0）不计入，避免用洞的边界当前沿。
+     * 直接查缓存自身，不依赖 AnalyticsListener 的 URI 匹配 —— 那条路一旦对不上
+     * （播放 URL 与上报 URI 存在细微差异）就会永远从 0 开始，白下载已看过的部分。
+     */
+    private fun cachedFrontier(url: String): Long {
+        return try {
+            cache.getCachedSpans(url)
+                .filter { it.length > 0 }
+                .maxOfOrNull { it.position + it.length } ?: 0L
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
     /** 暂停时启动预取：从各媒体“已加载到的字节前沿”向后把视频（以及可选的音频）写入磁盘缓存。
      *
      * 注意：DataSpec 的位置/长度单位是**字节**，而 player.bufferedPosition/duration 是**毫秒**，
      * 二者不可混用（早期实现误把毫秒当字节，导致只请求了一个极小的错误区间、瞬间完成、测不到速度）。
-     * 这里改用播放过程中 onLoadCompleted 上报的真实字节位置作为起点。
+     * 起点取自磁盘缓存已覆盖的最远字节（见 [cachedFrontier]），CacheWriter 会自动跳过已缓存区间。
      *
      * 状态机：Caching（下载中）→ Done（缓存完成）或 Full（空间满）。
      * 两者都是粘性状态，暂停期间保持不变，直到恢复播放才回到 None，保证提示常驻。
@@ -453,11 +455,14 @@ class ExoMediaPlayer(
     @OptIn(UnstableApi::class)
     private fun startPrefetch() {
         if (cacheStateInternal == VideoPlayerCacheState.Caching) return
+        // 尚未出画面时的 pause()（初始化、切清晰度/编码的中间态）不预取，避免刚打开就写盘
+        if (!firstFrameRendered) return
         val videoUrl = lastVideoUrl ?: return
         val audioUrl = lastAudioUrl
-        // 各 URL 已加载到的字节前沿作为预取起点（没有则从 0 开始）
-        val videoStart = loadedBytesByUri[videoUrl] ?: 0L
-        val audioStart = audioUrl?.let { loadedBytesByUri[it] ?: 0L }
+        // 起点 = 该 URL 在磁盘缓存里已覆盖到的最远字节；无缓存则为 0。
+        // 直接问缓存自己，避免依赖 onLoadCompleted 的 URI 匹配（此前匹配不上，永远从 0 开始）。
+        val videoStart = cachedFrontier(videoUrl)
+        val audioStart = audioUrl?.let { cachedFrontier(it) }
         cacheStateInternal = VideoPlayerCacheState.Caching
         cacheSpeedInternal = 0L
         // 代次：主线程每次启动/取消预取都会自增，后台线程据此判断结果是否已过期（被取消）
