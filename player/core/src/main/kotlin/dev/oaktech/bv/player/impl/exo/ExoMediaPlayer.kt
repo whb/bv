@@ -139,6 +139,8 @@ class ExoMediaPlayer(
     }
     private val prefetchDispatcher = prefetchExecutor.asCoroutineDispatcher()
     private var prefetchJob: Job? = null
+    /** 跨线程访问：预取线程写入、主线程 cancelPrefetch 读取，需 @Volatile 保证可见性 */
+    @Volatile
     private var cacheWriter: CacheWriter? = null
 
     /** 是否正在暂停预取（缓存中）；@Volatile 供 UI 线程跨线程读取 */
@@ -370,19 +372,26 @@ class ExoMediaPlayer(
     // 播放时 ExoPlayer 用 READ_ONLY 缓存数据源不会写盘，避免 eMMC 写饱和卡顿。
     // 预取在 BACKGROUND 优先级单线程、限速下载，不抢占正在播放的视频流与用户输入。
 
-    /** 暂停时启动预取：从当前已缓冲末尾开始，把视频（以及可选的音频）段写入磁盘缓存 */
+    /** 暂停时启动预取：从当前已缓冲末尾开始，把视频（以及可选的音频）段写入磁盘缓存。
+     *
+     * 注意：ExoPlayer 的方法非线程安全，必须在主线程（playbackLooper）读取
+     * bufferedPosition/duration，因此这里先在主线程捕获，再交给后台预取线程使用。 */
     @OptIn(UnstableApi::class)
     private fun startPrefetch() {
         val player = mPlayer ?: return
         if (isCachingInternal) return
         val videoUrl = lastVideoUrl ?: return
+        // 主线程捕获播放器状态与音频地址，避免后台线程访问 ExoPlayer / 读取非 volatile 字段
+        val audioUrl = lastAudioUrl
+        val startPos = player.bufferedPosition
+        val duration = player.duration
         isCachingInternal = true
         cacheSpeedInternal = 0L
-        Log.i(TAG, "暂停预取启动：从 ${player.bufferedPosition}ms 开始缓存 $videoUrl")
+        Log.i(TAG, "暂停预取启动：从 ${startPos}ms 开始缓存 $videoUrl")
         prefetchJob = CoroutineScope(prefetchDispatcher).launch {
             try {
-                prefetchUrl(videoUrl)
-                lastAudioUrl?.let { prefetchUrl(it) }
+                prefetchUrl(videoUrl, startPos, duration)
+                audioUrl?.let { prefetchUrl(it, startPos, duration) }
             } catch (_: Exception) {
                 // 预取失败（取消/网络）忽略，不影响播放
             } finally {
@@ -393,14 +402,12 @@ class ExoMediaPlayer(
     }
 
     /**
-     * 预取单个 URL：从 [player] 已缓冲位置之后下载到缓存（受 LRU 上限控总空间）。
+     * 预取单个 URL：从 [startPos] 之后下载到缓存（受 LRU 上限控总空间）。
      * 用独立的限速客户端（[PREFETCH_MAX_BYTES_PER_SEC]）避免占满带宽/eMMC。
+     * [startPos]/[duration] 由主线程捕获后传入，本方法在后台线程执行，不再访问 ExoPlayer。
      */
     @OptIn(UnstableApi::class)
-    private suspend fun prefetchUrl(url: String) {
-        val player = mPlayer ?: return
-        val startPos = player.bufferedPosition
-        val duration = player.duration
+    private fun prefetchUrl(url: String, startPos: Long, duration: Long) {
         // duration 有效时只预取“剩余部分”，避免无谓下载整份；无效时预取到末尾（LRU 兜底控空间）。
         // -1 即 C.LENGTH_UNSET，表示“下载到末尾”，DataSpec.Builder.setLength 以此约定。
         val length: Long = if (duration > 0) {
