@@ -58,6 +58,12 @@ abstract class AbstractVideoPlayer {
     /** 当前缓冲的网速 */
     abstract val tcpSpeed: Long
 
+    /** 当前缓存（暂停预取）的下载速度，字节/秒 */
+    abstract val cacheSpeed: Long
+
+    /** 是否正在暂停预取（写入磁盘缓存） */
+    abstract val isCaching: Boolean
+
     /** 调试信息 */
     abstract val debugInfo: String
 

@@ -37,6 +37,7 @@ import androidx.tv.material3.darkColorScheme
 import dev.oaktech.bv.player.entity.LocalVideoPlayerNetworkSpeed
 import dev.oaktech.bv.player.entity.LocalVideoPlayerPaymentData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerStateData
+import dev.oaktech.bv.player.entity.LocalVideoPlayerCacheSpeed
 import dev.oaktech.bv.player.entity.formatNetworkSpeed
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -78,6 +79,14 @@ fun PlayStateTips(
             PaidRequireTip(
                 modifier = Modifier.align(Alignment.Center),
                 epid = videoPlayerPaymentData.epid
+            )
+        }
+        // 暂停预取（磁盘缓冲）进行中：展示缓存下载速度，不抢占暂停状态下的其他提示
+        if (LocalVideoPlayerCacheSpeed.current.isCaching) {
+            CachingTip(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 24.dp)
             )
         }
     }
@@ -122,6 +131,38 @@ fun BufferingTip(
                 text = speedText,
                 style = MaterialTheme.typography.titleMedium
             )
+        }
+    }
+}
+
+@Composable
+fun CachingTip(
+    modifier: Modifier = Modifier
+) {
+    val cacheSpeedData = LocalVideoPlayerCacheSpeed.current
+    val speedText = formatNetworkSpeed(cacheSpeedData.cacheSpeed)
+    Surface(
+        modifier = modifier,
+        colors = SurfaceDefaults.colors(
+            containerColor = Color.Black.copy(0.5f)
+        ),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp, 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "正在缓存",
+                style = MaterialTheme.typography.titleMedium
+            )
+            if (speedText.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = speedText,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
         }
     }
 }

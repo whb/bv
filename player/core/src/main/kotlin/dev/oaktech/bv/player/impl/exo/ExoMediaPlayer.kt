@@ -11,6 +11,10 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheDataSink
+import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -23,14 +27,17 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.extractor.DefaultExtractorsFactory
 import dev.oaktech.bv.player.AbstractVideoPlayer
 import dev.oaktech.bv.player.OkHttpUtil
+import dev.oaktech.bv.player.VideoCacheProvider
 import dev.oaktech.bv.player.VideoPlayerOptions
 import dev.oaktech.bv.util.formatHourMinSec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.Executors
 
 @OptIn(UnstableApi::class)
 class ExoMediaPlayer(
@@ -82,12 +89,67 @@ class ExoMediaPlayer(
         }
     }
 
+    /** 暂停预取写入的磁盘缓存（进程级单例，LRU 上限 500MB） */
+    private val cache = VideoCacheProvider.get(context)
+
+    /** 暂停预取的最大下载速率：默认 4 MB/s，避免占满带宽/eMMC，不抢占正在播放的流 */
+    private val PREFETCH_MAX_BYTES_PER_SEC = 4L * 1024 * 1024
+
+    /** 上游网络数据源（纯网络，不含缓存） */
     @OptIn(UnstableApi::class)
-    private val dataSourceFactory: DataSource.Factory =
+    private val upstreamFactory: DataSource.Factory =
         OkHttpDataSource.Factory(OkHttpUtil.getSharedClient(context)).apply {
             options.userAgent?.let { setUserAgent(it) }
             options.referer?.let { setDefaultRequestProperties(mapOf("referer" to it)) }
         }
+
+    /** 播放用的数据源：在磁盘缓存之上包一层 CacheDataSource。
+     * 不设置写数据槽（write data sink），因此为只读缓存：播放时只从缓存读取（命中则省网）、
+     * 未命中回源，但绝不写盘——避免播放时产生额外磁盘写入（之前“边看边缓存”正是因 eMMC 写饱和
+     * 导致 TV 卡顿的根因）。暂停时的预取写入由独立的 CacheWriter 负责（见 [startPrefetch]）。 */
+    @OptIn(UnstableApi::class)
+    private val dataSourceFactory: DataSource.Factory =
+        CacheDataSource.Factory()
+            .setCache(cache)
+            .setUpstreamDataSourceFactory(upstreamFactory)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
+    /** 预取专用可写缓存数据源：带写数据槽，让 CacheWriter 把后续段写入磁盘缓存；
+     * 上游使用限速客户端，避免占满带宽/eMMC；读取时命中已缓存段则直接复用。 */
+    @OptIn(UnstableApi::class)
+    private val prefetchCacheDataSource: CacheDataSource =
+        CacheDataSource.Factory()
+            .setCache(cache)
+            .setUpstreamDataSourceFactory(
+                OkHttpDataSource.Factory(
+                    OkHttpUtil.getThrottledClient(context, PREFETCH_MAX_BYTES_PER_SEC)
+                ).apply {
+                    options.userAgent?.let { setUserAgent(it) }
+                    options.referer?.let { setDefaultRequestProperties(mapOf("referer" to it)) }
+                }
+            )
+            .setCacheWriteDataSinkFactory(CacheDataSink.Factory().setCache(cache))
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+            .createDataSource()
+
+    /** 预取专用单线程后台执行器，线程优先级设为 BACKGROUND（10）：与播放解码/UI 不在同一优先级，
+     * 不抢占用户输入与播放流畅度。 */
+    private val prefetchExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "bv-video-prefetch").also { it.priority = Process.THREAD_PRIORITY_BACKGROUND }
+    }
+    private val prefetchDispatcher = prefetchExecutor.asCoroutineDispatcher()
+    private var prefetchJob: Job? = null
+    private var cacheWriter: CacheWriter? = null
+
+    /** 是否正在暂停预取（缓存中）；@Volatile 供 UI 线程跨线程读取 */
+    @Volatile
+    private var isCachingInternal = false
+    /** 缓存下载速度（字节/秒）；由预取线程的进度回调估算，@Volatile 供 UI 读取 */
+    @Volatile
+    private var cacheSpeedInternal = 0L
+    /** 缓存速度采样窗口累加 */
+    private var cacheSampleBytes = 0L
+    private var cacheSampleStartMs = 0L
 
     init {
         initPlayer()
@@ -242,14 +304,18 @@ class ExoMediaPlayer(
     }
 
     override fun start() {
+        cancelPrefetch()
         mPlayer?.play()
     }
 
     override fun pause() {
         mPlayer?.pause()
+        // 暂停时启动预取：把后续视频段盘，恢复播放时更抗网络抖动
+        startPrefetch()
     }
 
     override fun stop() {
+        cancelPrefetch()
         mPlayer?.stop()
     }
 
@@ -261,6 +327,7 @@ class ExoMediaPlayer(
         get() = mPlayer?.isPlaying == true
 
     override fun seekTo(time: Long) {
+        cancelPrefetch()
         mPlayer?.seekTo(time)
     }
 
@@ -287,8 +354,100 @@ class ExoMediaPlayer(
             // 重复释放等异常，忽略
         }
         mPlayer = null
+        // 停止暂停预取并关闭后台线程，避免泄漏
+        cancelPrefetch()
+        try {
+            prefetchExecutor.shutdown()
+        } catch (_: Exception) {
+            // 忽略
+        }
         // 还原主线程优先级，消除全局副作用
         restoreMainThreadPriority()
+    }
+
+    // ===================== 暂停预取（磁盘缓冲） =====================
+    // 仅在暂停时把后续视频段写入磁盘缓存：恢复播放时命中缓存可抗网络抖动；
+    // 播放时 ExoPlayer 用 READ_ONLY 缓存数据源不会写盘，避免 eMMC 写饱和卡顿。
+    // 预取在 BACKGROUND 优先级单线程、限速下载，不抢占正在播放的视频流与用户输入。
+
+    /** 暂停时启动预取：从当前已缓冲末尾开始，把视频（以及可选的音频）段写入磁盘缓存 */
+    @OptIn(UnstableApi::class)
+    private fun startPrefetch() {
+        val player = mPlayer ?: return
+        if (isCachingInternal) return
+        val videoUrl = lastVideoUrl ?: return
+        isCachingInternal = true
+        cacheSpeedInternal = 0L
+        Log.i(TAG, "暂停预取启动：从 ${player.bufferedPosition}ms 开始缓存 $videoUrl")
+        prefetchJob = CoroutineScope(prefetchDispatcher).launch {
+            try {
+                prefetchUrl(videoUrl)
+                lastAudioUrl?.let { prefetchUrl(it) }
+            } catch (_: Exception) {
+                // 预取失败（取消/网络）忽略，不影响播放
+            } finally {
+                isCachingInternal = false
+                cacheSpeedInternal = 0L
+            }
+        }
+    }
+
+    /**
+     * 预取单个 URL：从 [player] 已缓冲位置之后下载到缓存（受 LRU 上限控总空间）。
+     * 用独立的限速客户端（[PREFETCH_MAX_BYTES_PER_SEC]）避免占满带宽/eMMC。
+     */
+    @OptIn(UnstableApi::class)
+    private suspend fun prefetchUrl(url: String) {
+        val player = mPlayer ?: return
+        val startPos = player.bufferedPosition
+        val duration = player.duration
+        // duration 有效时只预取“剩余部分”，避免无谓下载整份；无效时预取到末尾（LRU 兜底控空间）。
+        // -1 即 C.LENGTH_UNSET，表示“下载到末尾”，DataSpec.Builder.setLength 以此约定。
+        val length: Long = if (duration > 0) {
+            val remaining = duration - startPos
+            if (remaining > 0) remaining else -1L
+        } else {
+            -1L
+        }
+        val dataSpec = DataSpec.Builder()
+            .setUri(url)
+            .setPosition(startPos)
+            .setLength(length)
+            .build()
+        cacheSampleBytes = 0L
+        cacheSampleStartMs = System.currentTimeMillis()
+        cacheWriter = CacheWriter(
+            prefetchCacheDataSource,
+            dataSpec,
+            null
+        ) { _, _, newBytesCached ->
+            // 估算瞬时下载速度（每 500ms 滑动窗口），供 UI 显示缓存速度
+            cacheSampleBytes += newBytesCached
+            val now = System.currentTimeMillis()
+            val dt = now - cacheSampleStartMs
+            if (dt >= 500) {
+                cacheSpeedInternal = (cacheSampleBytes * 1000L) / dt
+                cacheSampleBytes = 0L
+                cacheSampleStartMs = now
+            }
+        }
+        try {
+            cacheWriter?.cache()
+        } catch (_: Exception) {
+            // 预取失败（网络/被取消）忽略，不影响播放
+        } finally {
+            cacheWriter = null
+        }
+    }
+
+    /** 取消暂停预取：停止 CacheWriter 并取消协程，置回非缓存状态 */
+    private fun cancelPrefetch() {
+        cacheWriter?.cancel()
+        cacheWriter = null
+        prefetchJob?.cancel()
+        prefetchJob = null
+        isCachingInternal = false
+        cacheSpeedInternal = 0L
     }
 
     override val currentPosition: Long
@@ -310,6 +469,12 @@ class ExoMediaPlayer(
     override val tcpSpeed: Long
         get() = latestBitrateEstimate / 8
 
+    override val cacheSpeed: Long
+        get() = cacheSpeedInternal
+
+    override val isCaching: Boolean
+        get() = isCachingInternal
+
     // 以下 Player.Listener 回调均在主线程（playbackLooper=main）触发，必须保持轻量：
     // 不得做同步阻塞重活（网络/IO/大解析），否则会挤占输入响应。重活一律异步到 IO 线程，
     // 这也是“卡顿/出错时用户输入仍响应”的关键保障之一。
@@ -324,7 +489,8 @@ class ExoMediaPlayer(
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         if (isPlaying) {
-            // 真正恢复播放，重置自愈计数，允许后续错误再次自愈
+            // 真正恢复播放，重置自愈计数，允许后续错误再次自愈；同时停止暂停预取
+            cancelPrefetch()
             errorRetryCount = 0
             mPlayerEventListener?.onPlay()
         } else {

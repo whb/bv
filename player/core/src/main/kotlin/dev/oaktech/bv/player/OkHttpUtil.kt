@@ -16,6 +16,14 @@ import okhttp3.ConnectionPool
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
+import okhttp3.Interceptor
+import okhttp3.Response
+import okhttp3.ResponseBody
+import okio.Buffer
+import okio.BufferedSource
+import okio.ForwardingSource
+import okio.Source
+import okio.buffer
 
 object OkHttpUtil {
     @Volatile
@@ -38,7 +46,31 @@ object OkHttpUtil {
     /** 兼容旧调用点 */
     fun generateCustomSslOkHttpClient(context: Context): OkHttpClient = getSharedClient(context)
 
+    /**
+     * 预取专用限速客户端：在 [buildBaseBuilder] 配置基础上叠加 [ThrottlingInterceptor]，
+     * 把下载速率限制在 maxBytesPerSecond 以内。暂停预取用它，避免占满带宽/磁盘 IO，
+     * 从而不抢占正在播放的视频流（用户输入与播放流畅度优先）。
+     */
+    private val throttledClients = ConcurrentHashMap<Long, OkHttpClient>()
+
+    fun getThrottledClient(context: Context, maxBytesPerSecond: Long): OkHttpClient {
+        return throttledClients[maxBytesPerSecond] ?: synchronized(throttledClients) {
+            throttledClients[maxBytesPerSecond] ?: buildBaseBuilder(context.applicationContext)
+                .addInterceptor(ThrottlingInterceptor(maxBytesPerSecond))
+                .build()
+                .also { throttledClients[maxBytesPerSecond] = it }
+        }
+    }
+
     private fun buildClient(context: Context): OkHttpClient {
+        return buildBaseBuilder(context.applicationContext).build()
+    }
+
+    /**
+     * 共享客户端的基础配置（SSL/CA、TCP 窗口、DNS 缓存、连接池、HTTP/2、超时、重试）。
+     * [buildClient] 与 [getThrottledClient] 共用，避免配置漂移。
+     */
+    private fun buildBaseBuilder(context: Context): OkHttpClient.Builder {
         val certificateFactory = CertificateFactory.getInstance("X.509")
         val customCaMap = mapOf(
             "custom:r5" to "GlobalSign ECC Root CA R5.crt"
@@ -54,7 +86,7 @@ object OkHttpUtil {
                 setCertificateEntry(it, systemKeyStore.getCertificate(it))
             }
             customCaMap.forEach { (alias, caFilename) ->
-                val certificateInputStream = context.assets.open(caFilename)
+                val certificateInputStream = context.applicationContext.assets.open(caFilename)
                 val certificate = certificateFactory.generateCertificate(certificateInputStream)
                 setCertificateEntry(alias, certificate)
             }
@@ -89,7 +121,6 @@ object OkHttpUtil {
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
-            .build()
     }
 
     /**
@@ -152,5 +183,72 @@ object OkHttpUtil {
                 cached?.second ?: throw e
             }
         }
+    }
+}
+
+/**
+ * 按字节/秒限制读取速率的 OkHttp 拦截器。
+ *
+ * 包装响应正文（ResponseBody），在读取循环中按 [maxBytesPerSecond] 限速：每读一段就 sleep 掉
+ * “应消耗时间 - 实际耗时”的差值。限速发生在预取的后台线程上，不会阻塞主线程；
+ * 其目的是让暂停预取的带宽/磁盘 IO 占用可控，避免抢占正在播放的视频流与系统 IO，
+ * 从而保障用户输入与播放流畅度。
+ */
+private class ThrottlingInterceptor(
+    private val maxBytesPerSecond: Long
+) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val response = chain.proceed(chain.request())
+        val body = response.body ?: return response
+        return response.newBuilder()
+            .body(ThrottledResponseBody(body, maxBytesPerSecond))
+            .build()
+    }
+
+    private class ThrottledResponseBody(
+        private val delegate: ResponseBody,
+        private val maxBytesPerSecond: Long
+    ) : ResponseBody() {
+        private var windowStartNanos = System.nanoTime()
+        private var bytesReadInWindow = 0L
+
+        override fun contentLength(): Long = delegate.contentLength()
+        override fun contentType() = delegate.contentType()
+        override fun source(): BufferedSource {
+            val throttled = object : ForwardingSource(delegate.source()) {
+                override fun read(sink: Buffer, byteCount: Long): Long {
+                    val read = super.read(sink, byteCount)
+                    if (read == -1L) return read
+                    if (maxBytesPerSecond <= 0) return read
+                    bytesReadInWindow += read
+                    val now = System.nanoTime()
+                    val elapsedNanos = now - windowStartNanos
+                    // 期望消耗时间 = 已读字节 / 速率（纳秒）
+                    val expectedNanos = bytesReadInWindow * 1_000_000_000L / maxBytesPerSecond
+                    val sleepNanos = expectedNanos - elapsedNanos
+                    if (sleepNanos > 0) {
+                        // 限速：让出 IO，确保下载速率不超过上限，避免占满带宽/eMMC
+                        try {
+                            Thread.sleep(
+                                sleepNanos / 1_000_000,
+                                (sleepNanos % 1_000_000).toInt()
+                            )
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                        }
+                        windowStartNanos = System.nanoTime()
+                        bytesReadInWindow = 0L
+                    } else if (elapsedNanos >= 1_000_000_000L) {
+                        // 累计满 1s 也重置窗口，保持速率统计平滑
+                        windowStartNanos = now
+                        bytesReadInWindow = 0L
+                    }
+                    return read
+                }
+            }
+            return throttled.buffer()
+        }
+
+        override fun close() = delegate.close()
     }
 }

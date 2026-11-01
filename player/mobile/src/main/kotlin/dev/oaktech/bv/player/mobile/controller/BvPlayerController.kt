@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,6 +63,7 @@ import dev.oaktech.bv.player.entity.Audio
 import dev.oaktech.bv.player.entity.DanmakuType
 import dev.oaktech.bv.player.entity.LocalVideoPlayerConfigData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerNetworkSpeed
+import dev.oaktech.bv.player.entity.LocalVideoPlayerCacheSpeed
 import dev.oaktech.bv.player.entity.LocalVideoPlayerSeekData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerStateData
 import dev.oaktech.bv.player.entity.PlayMode
@@ -431,6 +433,11 @@ fun BvPlayerControllerVideoContent(
             BufferingTip(modifier = Modifier.align(Alignment.Center))
         }
 
+        // 暂停预取（磁盘缓冲）进行中：展示缓存下载速度，不抢占正在播放/缓冲的提示
+        if (LocalVideoPlayerCacheSpeed.current.isCaching) {
+            CachingTip(modifier = Modifier.align(Alignment.TopCenter))
+        }
+
         SeekMoveTip(
             show = isMovingSeek,
             startTime = moveStartTime,
@@ -686,6 +693,38 @@ private fun BufferingTip(
                 text = speedText,
                 style = MaterialTheme.typography.titleMedium
             )
+        }
+    }
+}
+
+@Composable
+private fun CachingTip(
+    modifier: Modifier = Modifier
+) {
+    val cacheSpeedData = LocalVideoPlayerCacheSpeed.current
+    val speedText = formatNetworkSpeed(cacheSpeedData.cacheSpeed)
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        color = Color.Black.copy(0.6f)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp, 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "正在缓存",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White
+            )
+            if (speedText.isNotEmpty()) {
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(
+                    text = speedText,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White
+                )
+            }
         }
     }
 }

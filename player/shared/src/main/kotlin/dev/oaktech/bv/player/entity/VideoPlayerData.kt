@@ -108,6 +108,12 @@ data class VideoPlayerNetworkSpeedData(
     val speed: Long = 0L
 )
 
+/** 暂停预取（磁盘缓冲）状态：是否正在缓存 + 当前缓存下载速度（字节/秒），供 UI 展示 */
+data class VideoPlayerCacheSpeedData(
+    val isCaching: Boolean = false,
+    val cacheSpeed: Long = 0L
+)
+
 /** 字节/秒 -> 人类可读速度文本（如 "3.2 MB/s" / "850 KB/s"），无速度返回空串 */
 fun formatNetworkSpeed(bytesPerSec: Long): String {
     return when {
@@ -132,3 +138,4 @@ val LocalVideoPlayerDanmakuMasksData = compositionLocalOf { VideoPlayerDanmakuMa
 val LocalVideoPlayerVideoShotData = compositionLocalOf { VideoPlayerVideoShotData() }
 val LocalVideoPlayerDebugInfoData = compositionLocalOf { VideoPlayerDebugInfoData() }
 val LocalVideoPlayerNetworkSpeed = compositionLocalOf { VideoPlayerNetworkSpeedData() }
+val LocalVideoPlayerCacheSpeed = compositionLocalOf { VideoPlayerCacheSpeedData() }
