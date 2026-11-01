@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,8 +29,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -44,8 +47,11 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import androidx.compose.foundation.Image as FoundationImage
+import androidx.compose.ui.res.painterResource
 import dev.oaktech.biliapi.entity.CarouselData
 import dev.oaktech.bv.util.focusedBorder
+import dev.oaktech.bv.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -82,6 +88,11 @@ fun CarouselContent(
     data: List<CarouselData.CarouselItem>,
     onClick: (CarouselData.CarouselItem) -> Unit
 ) {
+    // 轮播数据为空时显示素雅占位空框（不可点击），既避免空白突兀，也避免点击越界崩溃
+    if (data.isEmpty()) {
+        CarouselPlaceholder(modifier = modifier)
+        return
+    }
     Carousel(
         itemCount = data.size,
         modifier = modifier
@@ -110,6 +121,38 @@ fun CarouselCard(
         contentScale = ContentScale.Crop,
         alignment = Alignment.TopCenter
     )
+}
+
+/**
+ * 轮播数据为空时的占位空框：用水彩暖色调图片（res/drawable/carousel_placeholder）按 Crop 填满
+ * 整个 240dp 高卡片，居中叠加"暂无轮播内容"文字（带阴影保证在亮色图上可读）。
+ * 与正常轮播保持一致：可聚焦 + 聚焦边框，从而参与焦点对齐（从列表返回标题时轮播行能被
+ * BringIntoView 完整显示）。不响应点击，避免空数据下 data[index] 越界崩溃。
+ */
+@Composable
+private fun CarouselPlaceholder(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .height(240.dp)
+            .clip(MaterialTheme.shapes.large)
+            .focusable()
+            .focusedBorder(),
+        contentAlignment = Alignment.Center
+    ) {
+        FoundationImage(
+            painter = painterResource(R.drawable.carousel_placeholder),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+        Text(
+            text = "暂无轮播内容",
+            style = MaterialTheme.typography.bodyMedium.copy(
+                color = Color.White,
+                shadow = Shadow(color = Color.Black, blurRadius = 4f)
+            )
+        )
+    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -143,7 +186,7 @@ fun Carousel(
             .onFocusChanged { focusState ->
                 hasFocus = focusState.isFocused
             }
-            .clickable { onClick(currentIndex) }
+            .clickable { if (itemCount > 0) onClick(currentIndex) }
             .onKeyEvent {
                 when {
                     itemCount == 0 -> false
