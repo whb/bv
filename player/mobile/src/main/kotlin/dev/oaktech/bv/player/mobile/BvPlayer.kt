@@ -291,13 +291,13 @@ fun BvPlayer(
         }
     }
 
-    // 暂停预取的缓存下载速度每 500ms 采样一次：isCaching 控制是否展示，cacheSpeed 用于显示速率。
-    // 播放器内部已对预取做 BACKGROUND 优先级 + 限速，此处只读字段，开销极低。
+    // 暂停预取的缓存下载速度每 300ms 采样一次：isCaching 控制是否展示（播放器侧带最短可见窗口，
+    // 不会因预取瞬间完成而闪没），cacheSpeed 用于显示速率。只读 volatile 字段，开销极低。
     LaunchedEffect(Unit) {
         while (true) {
             isCaching = videoPlayer.isCaching
             cacheSpeed = videoPlayer.cacheSpeed
-            delay(500)
+            delay(300)
         }
     }
 

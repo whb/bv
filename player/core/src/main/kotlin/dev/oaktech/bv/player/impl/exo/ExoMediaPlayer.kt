@@ -3,6 +3,7 @@ package dev.oaktech.bv.player.impl.exo
 import android.content.Context
 import android.os.Looper
 import android.os.Process
+import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.C
@@ -146,6 +147,13 @@ class ExoMediaPlayer(
     /** 是否正在暂停预取（缓存中）；@Volatile 供 UI 线程跨线程读取 */
     @Volatile
     private var isCachingInternal = false
+    /**
+     * 缓存提示最低可见截止时间（SystemClock.elapsedRealtime）。
+     * 预取可能因“该段已在缓存/剩余段很短”而瞬间结束，若 UI 直接读瞬时状态会时显时不显；
+     * 这里给“正在缓存”一个最短可见窗口，UI 轮询才能稳定捕捉到。
+     */
+    @Volatile
+    private var cacheVisibleUntil = 0L
     /** 缓存下载速度（字节/秒）；由预取线程的进度回调估算，@Volatile 供 UI 读取 */
     @Volatile
     private var cacheSpeedInternal = 0L
@@ -385,8 +393,12 @@ class ExoMediaPlayer(
         val audioUrl = lastAudioUrl
         val startPos = player.bufferedPosition
         val duration = player.duration
+        // 已缓冲到末尾（剩余段 <= 0）则无内容可预取，直接不进入“缓存中”状态，避免误导
+        if (duration > 0 && duration - startPos <= 0) return
         isCachingInternal = true
         cacheSpeedInternal = 0L
+        // 给“正在缓存”一个最短可见窗口：即便实际预取瞬间完成，UI 也能稳定显示而非一闪而过
+        cacheVisibleUntil = SystemClock.elapsedRealtime() + MIN_CACHE_VISIBLE_MS
         Log.i(TAG, "暂停预取启动：从 ${startPos}ms 开始缓存 $videoUrl")
         prefetchJob = CoroutineScope(prefetchDispatcher).launch {
             try {
@@ -395,8 +407,9 @@ class ExoMediaPlayer(
             } catch (_: Exception) {
                 // 预取失败（取消/网络）忽略，不影响播放
             } finally {
+                // 只复位“实际进行中”标志；cacheSpeedInternal 保留最后速度供可见窗口内展示，
+                // 由 cancelPrefetch 或下一次 startPrefetch 清零。
                 isCachingInternal = false
-                cacheSpeedInternal = 0L
             }
         }
     }
@@ -428,11 +441,11 @@ class ExoMediaPlayer(
             dataSpec,
             null
         ) { _, _, newBytesCached ->
-            // 估算瞬时下载速度（每 500ms 滑动窗口），供 UI 显示缓存速度
+            // 估算瞬时下载速度（每 300ms 滑动窗口），供 UI 显示缓存速度
             cacheSampleBytes += newBytesCached
             val now = System.currentTimeMillis()
             val dt = now - cacheSampleStartMs
-            if (dt >= 500) {
+            if (dt >= CACHE_SPEED_WINDOW_MS) {
                 cacheSpeedInternal = (cacheSampleBytes * 1000L) / dt
                 cacheSampleBytes = 0L
                 cacheSampleStartMs = now
@@ -454,6 +467,7 @@ class ExoMediaPlayer(
         prefetchJob?.cancel()
         prefetchJob = null
         isCachingInternal = false
+        cacheVisibleUntil = 0L
         cacheSpeedInternal = 0L
     }
 
@@ -480,7 +494,7 @@ class ExoMediaPlayer(
         get() = cacheSpeedInternal
 
     override val isCaching: Boolean
-        get() = isCachingInternal
+        get() = isCachingInternal || SystemClock.elapsedRealtime() < cacheVisibleUntil
 
     // 以下 Player.Listener 回调均在主线程（playbackLooper=main）触发，必须保持轻量：
     // 不得做同步阻塞重活（网络/IO/大解析），否则会挤占输入响应。重活一律异步到 IO 线程，
@@ -591,6 +605,12 @@ class ExoMediaPlayer(
     companion object {
         /** AV1 解码兜底检测的等待时间：音频已就绪但这么久还没渲染出首帧，视为解码失败 */
         private const val AV1_DECODE_CHECK_DELAY_MS = 8000L
+
+        /** 缓存提示最短可见时长：避免预取瞬间完成导致 UI 时显时不显 */
+        private const val MIN_CACHE_VISIBLE_MS = 1200L
+
+        /** 缓存下载速度采样窗口（毫秒）：越小越灵敏，但抖动越大 */
+        private const val CACHE_SPEED_WINDOW_MS = 300L
 
         // 缓冲策略：比 ExoPlayer 默认（min/max 各 50s）更激进，弱网下更少 re-buffer
         private const val MIN_BUFFER_MS = 60_000
