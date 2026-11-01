@@ -280,9 +280,31 @@ class ExoMediaPlayer(
 
     @OptIn(UnstableApi::class)
     override fun playUrl(videoUrl: String?, audioUrl: String?) {
+        // 换视频：先停掉上一部的预取，并清空磁盘缓存——缓存区只保留当前播放视频的内容。
+        // 清空排在预取线程上执行（与预取任务天然串行），既不阻塞主线程也不抢用户输入。
+        cancelPrefetch()
+        mainHandler.removeCallbacks(prefetchRestart)
+        // 上一部视频的字节前沿对新视频无意义，丢弃
+        loadedBytesByUri.clear()
+        clearCacheAsync()
         lastVideoUrl = videoUrl
         lastAudioUrl = audioUrl
         mMediaSource = buildMediaSource(videoUrl, audioUrl)
+    }
+
+    /** 异步清空磁盘缓存：post 到单线程预取执行器，保证“先清空、后预取”的顺序 */
+    private fun clearCacheAsync() {
+        try {
+            prefetchExecutor.execute {
+                try {
+                    VideoCacheProvider.clear(context)
+                } catch (_: Exception) {
+                    // 清理失败不影响播放，残留片段由 LRU 上限兜底
+                }
+            }
+        } catch (_: Exception) {
+            // 执行器已关闭（release 之后再次调用）时忽略
+        }
     }
 
     /**

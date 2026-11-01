@@ -37,6 +37,31 @@ object VideoCacheProvider {
         return SimpleCache(cacheDir, evictor, databaseProvider)
     }
 
+    /**
+     * 清空磁盘缓存（逐个 key 删除片段）。
+     *
+     * 播放新视频前调用，保证缓存区只保留"当前播放视频"的内容，不会跨视频长期占用硬盘。
+     * 用 [Cache.removeResource] 而不是删目录：SimpleCache 实例仍被各数据源持有，
+     * 直接删目录会破坏其索引；removeResource 会同步更新索引与 LRU 计数。
+     *
+     * 单线程预取执行器上调用可保证与预取任务串行，避免与正在写入的片段冲突。
+     */
+    fun clear(context: Context) {
+        val cache = get(context)
+        val keys = try {
+            cache.keys.toList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        for (key in keys) {
+            try {
+                cache.removeResource(key)
+            } catch (_: Exception) {
+                // 个别片段被占用/已失效时忽略，继续删其余部分
+            }
+        }
+    }
+
     /** 应用退出前释放（可选）；重复调用安全 */
     fun release() {
         synchronized(lock) {
