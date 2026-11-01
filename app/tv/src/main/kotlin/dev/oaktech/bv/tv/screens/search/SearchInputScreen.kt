@@ -18,8 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -37,12 +35,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.onFocusEvent
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -194,9 +190,6 @@ private fun SearchInput(
     enableProxy: Boolean,
     onEnableProxyChange: (Boolean) -> Unit
 ) {
-    val keyboardController = LocalSoftwareKeyboardController.current
-    var textFieldFocused by remember { mutableStateOf(false) }
-
     Box(
         modifier = modifier
             .width(280.dp)
@@ -208,41 +201,37 @@ private fun SearchInput(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // 搜索词展示框：仅用于显示当前已输入内容，不请求系统输入法。
+            // TV 端所有输入都走下方自定义软键盘（遥控器输入），系统 IME 既多余又会抢焦点，
+            // 因此这里 readOnly + canFocus=false，使其脱离焦点链，D-pad 焦点直接落到自定义键盘。
             OutlinedTextField(
                 modifier = Modifier
                     .width(258.dp)
-                    .onFocusEvent {
-                        textFieldFocused = it.isFocused
-                        if (it.isFocused) keyboardController?.show()
-                        else keyboardController?.hide()
-                    },
+                    .focusProperties { canFocus = false },
                 value = searchKeyword,
                 onValueChange = onSearchKeywordChange,
+                readOnly = true,
                 maxLines = 1,
                 shape = MaterialTheme.shapes.large,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { onSearch(searchKeyword) }),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.inverseSurface,
                     cursorColor = MaterialTheme.colorScheme.inverseSurface
                 )
             )
-            if (!textFieldFocused) {
-                SoftKeyboard(
-                    firstButtonFocusRequester = firstButtonFocusRequester,
-                    showSearchWithProxy = showProxyOptions,
-                    enableSearchWithProxy = enableProxy,
-                    onClick = { onSearchKeywordChange(searchKeyword + it) },
-                    onClear = { onSearchKeywordChange("") },
-                    onDelete = {
-                        if (searchKeyword.isNotEmpty()) {
-                            onSearchKeywordChange(searchKeyword.dropLast(1))
-                        }
-                    },
-                    onSearch = { onSearch(searchKeyword) },
-                    onEnableSearchWithProxyChange = onEnableProxyChange
-                )
-            }
+            SoftKeyboard(
+                firstButtonFocusRequester = firstButtonFocusRequester,
+                showSearchWithProxy = showProxyOptions,
+                enableSearchWithProxy = enableProxy,
+                onClick = { onSearchKeywordChange(searchKeyword + it) },
+                onClear = { onSearchKeywordChange("") },
+                onDelete = {
+                    if (searchKeyword.isNotEmpty()) {
+                        onSearchKeywordChange(searchKeyword.dropLast(1))
+                    }
+                },
+                onSearch = { onSearch(searchKeyword) },
+                onEnableSearchWithProxyChange = onEnableProxyChange
+            )
         }
     }
 }
