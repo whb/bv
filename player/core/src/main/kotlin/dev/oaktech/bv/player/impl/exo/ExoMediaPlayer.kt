@@ -22,6 +22,8 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.source.LoadEventInfo
+import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -71,6 +73,13 @@ class ExoMediaPlayer(
     @Volatile
     private var latestBitrateEstimate: Long = 0L
 
+    /**
+     * 各媒体 URL 已加载到的字节前沿（file byte offset，来自 onLoadCompleted 的 DataSpec）。
+     * 暂停预取需要字节偏移，而 player.bufferedPosition 是毫秒——不能混用；
+     * 这里用播放过程中真实上报的字节位置作为预取起点，既正确又能贴合当前播放位置向前缓存。
+     */
+    private val loadedBytesByUri = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     private val analyticsListener = object : AnalyticsListener {
         override fun onRenderedFirstFrame(
             eventTime: AnalyticsListener.EventTime,
@@ -88,6 +97,20 @@ class ExoMediaPlayer(
         ) {
             latestBitrateEstimate = bandwidthEstimate
         }
+
+        override fun onLoadCompleted(
+            eventTime: AnalyticsListener.EventTime,
+            loadEventInfo: LoadEventInfo,
+            mediaLoadData: MediaLoadData
+        ) {
+            // 记录该 URL 已加载到的字节位置（position 为字节偏移，bytesLoaded 为本段字节数），
+            // 供暂停预取从“当前播放位置之后的字节”开始缓存。
+            val uri = loadEventInfo.dataSpec.uri.toString()
+            val endPos = loadEventInfo.dataSpec.position + loadEventInfo.bytesLoaded
+            if (endPos > 0) {
+                loadedBytesByUri.merge(uri, endPos) { a, b -> maxOf(a, b) }
+            }
+        }
     }
 
     /** 暂停预取写入的磁盘缓存（进程级单例，LRU 上限 500MB） */
@@ -95,6 +118,9 @@ class ExoMediaPlayer(
 
     /** 暂停预取的最大下载速率：默认 4 MB/s，避免占满带宽/eMMC，不抢占正在播放的流 */
     private val PREFETCH_MAX_BYTES_PER_SEC = 4L * 1024 * 1024
+
+    /** 单次暂停预取的下载字节上限：300MB。避免超长视频被无休止下载（超出只会被 LRU 淘汰，浪费带宽） */
+    private val PREFETCH_MAX_BYTES = 300L * 1024 * 1024
 
     /** 上游网络数据源（纯网络，不含缓存） */
     @OptIn(UnstableApi::class)
@@ -380,30 +406,28 @@ class ExoMediaPlayer(
     // 播放时 ExoPlayer 用 READ_ONLY 缓存数据源不会写盘，避免 eMMC 写饱和卡顿。
     // 预取在 BACKGROUND 优先级单线程、限速下载，不抢占正在播放的视频流与用户输入。
 
-    /** 暂停时启动预取：从当前已缓冲末尾开始，把视频（以及可选的音频）段写入磁盘缓存。
+    /** 暂停时启动预取：从各媒体“已加载到的字节前沿”向后把视频（以及可选的音频）写入磁盘缓存。
      *
-     * 注意：ExoPlayer 的方法非线程安全，必须在主线程（playbackLooper）读取
-     * bufferedPosition/duration，因此这里先在主线程捕获，再交给后台预取线程使用。 */
+     * 注意：DataSpec 的位置/长度单位是**字节**，而 player.bufferedPosition/duration 是**毫秒**，
+     * 二者不可混用（早期实现误把毫秒当字节，导致只请求了一个极小的错误区间、瞬间完成、测不到速度）。
+     * 这里改用播放过程中 onLoadCompleted 上报的真实字节位置作为起点。 */
     @OptIn(UnstableApi::class)
     private fun startPrefetch() {
-        val player = mPlayer ?: return
         if (isCachingInternal) return
         val videoUrl = lastVideoUrl ?: return
-        // 主线程捕获播放器状态与音频地址，避免后台线程访问 ExoPlayer / 读取非 volatile 字段
         val audioUrl = lastAudioUrl
-        val startPos = player.bufferedPosition
-        val duration = player.duration
-        // 已缓冲到末尾（剩余段 <= 0）则无内容可预取，直接不进入“缓存中”状态，避免误导
-        if (duration > 0 && duration - startPos <= 0) return
+        // 各 URL 已加载到的字节前沿作为预取起点（没有则从 0 开始）
+        val videoStart = loadedBytesByUri[videoUrl] ?: 0L
+        val audioStart = audioUrl?.let { loadedBytesByUri[it] ?: 0L }
         isCachingInternal = true
         cacheSpeedInternal = 0L
         // 给“正在缓存”一个最短可见窗口：即便实际预取瞬间完成，UI 也能稳定显示而非一闪而过
         cacheVisibleUntil = SystemClock.elapsedRealtime() + MIN_CACHE_VISIBLE_MS
-        Log.i(TAG, "暂停预取启动：从 ${startPos}ms 开始缓存 $videoUrl")
+        Log.i(TAG, "暂停预取启动：videoStart=${videoStart}B audioStart=${audioStart}B")
         prefetchJob = CoroutineScope(prefetchDispatcher).launch {
             try {
-                prefetchUrl(videoUrl, startPos, duration)
-                audioUrl?.let { prefetchUrl(it, startPos, duration) }
+                prefetchUrl(videoUrl, videoStart)
+                if (audioUrl != null && audioStart != null) prefetchUrl(audioUrl, audioStart)
             } catch (_: Exception) {
                 // 预取失败（取消/网络）忽略，不影响播放
             } finally {
@@ -415,33 +439,34 @@ class ExoMediaPlayer(
     }
 
     /**
-     * 预取单个 URL：从 [startPos] 之后下载到缓存（受 LRU 上限控总空间）。
+     * 预取单个 URL：从字节偏移 [startByte] 下载到文件末尾（受 LRU 上限控总空间）。
+     * 已缓存的区间由 [CacheWriter] 自动跳过，不会重复下载。
      * 用独立的限速客户端（[PREFETCH_MAX_BYTES_PER_SEC]）避免占满带宽/eMMC。
-     * [startPos]/[duration] 由主线程捕获后传入，本方法在后台线程执行，不再访问 ExoPlayer。
+     * 本方法在后台线程执行，不访问 ExoPlayer。
      */
     @OptIn(UnstableApi::class)
-    private fun prefetchUrl(url: String, startPos: Long, duration: Long) {
-        // duration 有效时只预取“剩余部分”，避免无谓下载整份；无效时预取到末尾（LRU 兜底控空间）。
-        // -1 即 C.LENGTH_UNSET，表示“下载到末尾”，DataSpec.Builder.setLength 以此约定。
-        val length: Long = if (duration > 0) {
-            val remaining = duration - startPos
-            if (remaining > 0) remaining else -1L
-        } else {
-            -1L
-        }
+    private fun prefetchUrl(url: String, startByte: Long) {
+        // -1L 即 LENGTH_UNSET：读到末尾。单位是字节，绝非毫秒。
         val dataSpec = DataSpec.Builder()
             .setUri(url)
-            .setPosition(startPos)
-            .setLength(length)
+            .setPosition(startByte)
+            .setLength(-1L)
             .build()
+        val startMs = System.currentTimeMillis()
         cacheSampleBytes = 0L
-        cacheSampleStartMs = System.currentTimeMillis()
-        cacheWriter = CacheWriter(
+        cacheSampleStartMs = startMs
+        var totalNew = 0L
+        val writer = CacheWriter(
             prefetchCacheDataSource,
             dataSpec,
             null
         ) { _, _, newBytesCached ->
-            // 估算瞬时下载速度（每 300ms 滑动窗口），供 UI 显示缓存速度
+            totalNew += newBytesCached
+            // 单次预取达到上限即停，避免超长视频被无休止下载（LRU 会反复淘汰，纯浪费带宽）
+            if (totalNew >= PREFETCH_MAX_BYTES) {
+                cacheWriter?.cancel()
+            }
+            // 估算瞬时下载速度（每 CACHE_SPEED_WINDOW_MS 滑动窗口），供 UI 显示缓存速度
             cacheSampleBytes += newBytesCached
             val now = System.currentTimeMillis()
             val dt = now - cacheSampleStartMs
@@ -451,12 +476,18 @@ class ExoMediaPlayer(
                 cacheSampleStartMs = now
             }
         }
+        cacheWriter = writer
         try {
-            cacheWriter?.cache()
+            writer.cache()
         } catch (_: Exception) {
             // 预取失败（网络/被取消）忽略，不影响播放
         } finally {
             cacheWriter = null
+            // 下载在窗口内快速结束（或数据量很小）时用总平均速度兜底，避免只显示“正在缓存”而无速度
+            val totalDt = System.currentTimeMillis() - startMs
+            if (cacheSpeedInternal == 0L && cacheSampleBytes > 0 && totalDt > 0) {
+                cacheSpeedInternal = cacheSampleBytes * 1000L / totalDt
+            }
         }
     }
 
