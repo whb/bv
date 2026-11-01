@@ -71,6 +71,7 @@ import dev.oaktech.bv.player.entity.Resolution
 import dev.oaktech.bv.player.entity.VideoCodec
 import dev.oaktech.bv.player.entity.VideoListItem
 import dev.oaktech.bv.player.entity.VideoPlayerConfigData
+import dev.oaktech.bv.player.entity.VideoPlayerCacheState
 import dev.oaktech.bv.player.entity.VideoPlayerSeekData
 import dev.oaktech.bv.player.entity.VideoPlayerStateData
 import dev.oaktech.bv.player.entity.formatNetworkSpeed
@@ -433,8 +434,8 @@ fun BvPlayerControllerVideoContent(
             BufferingTip(modifier = Modifier.align(Alignment.Center))
         }
 
-        // 暂停预取（磁盘缓冲）进行中：展示缓存下载速度，不抢占正在播放/缓冲的提示
-        if (LocalVideoPlayerCacheSpeed.current.isCaching) {
+        // 暂停预取（磁盘缓冲）：暂停期间提示常驻，正在缓存时附实时速度
+        if (LocalVideoPlayerCacheSpeed.current.visible) {
             CachingTip(modifier = Modifier.align(Alignment.TopCenter))
         }
 
@@ -702,7 +703,18 @@ private fun CachingTip(
     modifier: Modifier = Modifier
 ) {
     val cacheSpeedData = LocalVideoPlayerCacheSpeed.current
-    val speedText = formatNetworkSpeed(cacheSpeedData.cacheSpeed)
+    // 三态文案：正在缓存（附实时速度）/ 空间满 / 完成
+    val title = when (cacheSpeedData.state) {
+        VideoPlayerCacheState.Caching -> "正在缓存"
+        VideoPlayerCacheState.Full -> "缓存空间满"
+        VideoPlayerCacheState.Done -> "缓存完成"
+        VideoPlayerCacheState.None -> return
+    }
+    val speedText = if (cacheSpeedData.state == VideoPlayerCacheState.Caching) {
+        formatNetworkSpeed(cacheSpeedData.cacheSpeed)
+    } else {
+        ""
+    }
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(8.dp),
@@ -713,7 +725,7 @@ private fun CachingTip(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "正在缓存",
+                text = title,
                 style = MaterialTheme.typography.labelMedium,
                 color = Color.White
             )

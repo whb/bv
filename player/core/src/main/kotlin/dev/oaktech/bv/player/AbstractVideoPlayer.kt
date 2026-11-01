@@ -1,5 +1,7 @@
 package dev.oaktech.bv.player
 
+import dev.oaktech.bv.player.entity.VideoPlayerCacheState
+
 abstract class AbstractVideoPlayer {
     /** 播放器事件回调 */
     protected var mPlayerEventListener: VideoPlayerListener? = null
@@ -61,8 +63,8 @@ abstract class AbstractVideoPlayer {
     /** 当前缓存（暂停预取）的下载速度，字节/秒 */
     abstract val cacheSpeed: Long
 
-    /** 是否正在暂停预取（写入磁盘缓存） */
-    abstract val isCaching: Boolean
+    /** 暂停预取（写入磁盘缓存）的状态：无任务 / 正在缓存 / 空间满 / 已完成 */
+    abstract val cacheState: VideoPlayerCacheState
 
     /** 调试信息 */
     abstract val debugInfo: String

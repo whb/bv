@@ -5,11 +5,13 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -38,6 +40,7 @@ import dev.oaktech.bv.player.entity.LocalVideoPlayerNetworkSpeed
 import dev.oaktech.bv.player.entity.LocalVideoPlayerPaymentData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerStateData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerCacheSpeed
+import dev.oaktech.bv.player.entity.VideoPlayerCacheState
 import dev.oaktech.bv.player.entity.formatNetworkSpeed
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -81,8 +84,8 @@ fun PlayStateTips(
                 epid = videoPlayerPaymentData.epid
             )
         }
-        // 暂停预取（磁盘缓冲）进行中：展示缓存下载速度，不抢占暂停状态下的其他提示
-        if (LocalVideoPlayerCacheSpeed.current.isCaching) {
+        // 暂停预取（磁盘缓冲）：暂停期间提示常驻，正在缓存时附实时速度
+        if (LocalVideoPlayerCacheSpeed.current.visible) {
             CachingTip(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -140,7 +143,18 @@ fun CachingTip(
     modifier: Modifier = Modifier
 ) {
     val cacheSpeedData = LocalVideoPlayerCacheSpeed.current
-    val speedText = formatNetworkSpeed(cacheSpeedData.cacheSpeed)
+    // 三态文案：正在缓存（附实时速度）/ 空间满 / 完成
+    val title = when (cacheSpeedData.state) {
+        VideoPlayerCacheState.Caching -> "正在缓存"
+        VideoPlayerCacheState.Full -> "缓存空间满"
+        VideoPlayerCacheState.Done -> "缓存完成"
+        VideoPlayerCacheState.None -> return
+    }
+    val speedText = if (cacheSpeedData.state == VideoPlayerCacheState.Caching) {
+        formatNetworkSpeed(cacheSpeedData.cacheSpeed)
+    } else {
+        ""
+    }
     Surface(
         modifier = modifier,
         colors = SurfaceDefaults.colors(
@@ -148,16 +162,16 @@ fun CachingTip(
         ),
         shape = MaterialTheme.shapes.medium
     ) {
-        Column(
+        Row(
             modifier = Modifier.padding(16.dp, 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "正在缓存",
+                text = title,
                 style = MaterialTheme.typography.titleMedium
             )
             if (speedText.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = speedText,
                     style = MaterialTheme.typography.bodyMedium

@@ -108,11 +108,30 @@ data class VideoPlayerNetworkSpeedData(
     val speed: Long = 0L
 )
 
-/** 暂停预取（磁盘缓冲）状态：是否正在缓存 + 当前缓存下载速度（字节/秒），供 UI 展示 */
+/** 暂停预取（磁盘缓冲）状态机。暂停期间提示常驻，三种结果分别展示不同文案。 */
+enum class VideoPlayerCacheState {
+    /** 无缓存任务：播放中、已取消、或当前媒体不可缓存 */
+    None,
+
+    /** 正在写入磁盘缓存，展示实时下载速度 */
+    Caching,
+
+    /** 磁盘缓存空间已满（LRU 上限），无法继续缓存后续内容 */
+    Full,
+
+    /** 本次缓存已完成（已缓存到末尾，或所需内容此前已全部在缓存中） */
+    Done
+}
+
+/** 暂停预取（磁盘缓冲）状态 + 当前缓存下载速度（字节/秒），供 UI 展示 */
 data class VideoPlayerCacheSpeedData(
-    val isCaching: Boolean = false,
+    val state: VideoPlayerCacheState = VideoPlayerCacheState.None,
     val cacheSpeed: Long = 0L
-)
+) {
+    /** 是否需要展示缓存提示：暂停预取期间（含完成/满）都常驻显示 */
+    val visible: Boolean
+        get() = state != VideoPlayerCacheState.None
+}
 
 /** 字节/秒 -> 人类可读速度文本（如 "3.2 MB/s" / "850 KB/s"），无速度返回空串 */
 fun formatNetworkSpeed(bytesPerSec: Long): String {

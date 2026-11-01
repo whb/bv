@@ -22,7 +22,7 @@ object VideoCacheProvider {
     private val lock = Any()
 
     /** 磁盘缓存上限：500 MB，LRU 淘汰最旧内容，控制硬盘占用 */
-    private const val MAX_CACHE_BYTES = 500L * 1024 * 1024
+    const val MAX_CACHE_BYTES = 500L * 1024 * 1024
 
     fun get(context: Context): Cache {
         return cache ?: synchronized(lock) {

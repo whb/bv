@@ -39,6 +39,7 @@ import dev.oaktech.bv.player.entity.LocalVideoPlayerLogsData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerNetworkSpeed
 import dev.oaktech.bv.player.entity.LocalVideoPlayerCacheSpeed
 import dev.oaktech.bv.player.entity.VideoPlayerCacheSpeedData
+import dev.oaktech.bv.player.entity.VideoPlayerCacheState
 import dev.oaktech.bv.player.entity.VideoPlayerNetworkSpeedData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerSeekData
 import dev.oaktech.bv.player.entity.LocalVideoPlayerStateData
@@ -101,8 +102,8 @@ fun BvPlayer(
     var isBuffering by remember { mutableStateOf(false) }
     var exception by remember { mutableStateOf<Exception?>(null) }
     var speed by remember { mutableLongStateOf(0L) }
-    // 暂停预取（磁盘缓冲）状态：是否正在缓存 + 缓存下载速度
-    var isCaching by remember { mutableStateOf(false) }
+    // 暂停预取（磁盘缓冲）状态 + 缓存下载速度
+    var cacheState by remember { mutableStateOf(VideoPlayerCacheState.None) }
     var cacheSpeed by remember { mutableLongStateOf(0L) }
 
     val typeFilter by remember { mutableStateOf(TypeFilter()) }
@@ -291,11 +292,11 @@ fun BvPlayer(
         }
     }
 
-    // 暂停预取的缓存下载速度每 300ms 采样一次：isCaching 控制是否展示（播放器侧带最短可见窗口，
-    // 不会因预取瞬间完成而闪没），cacheSpeed 用于显示速率。只读 volatile 字段，开销极低。
+    // 暂停预取状态每 300ms 采样一次：cacheState 决定展示文案（正在缓存/空间满/完成），
+    // 状态是粘性的（完成后停在 Done），因此暂停期间提示常驻不闪。
     LaunchedEffect(Unit) {
         while (true) {
-            isCaching = videoPlayer.isCaching
+            cacheState = videoPlayer.cacheState
             cacheSpeed = videoPlayer.cacheSpeed
             delay(300)
         }
@@ -340,7 +341,7 @@ fun BvPlayer(
         ),
         LocalVideoPlayerNetworkSpeed provides VideoPlayerNetworkSpeedData(speed = speed),
         LocalVideoPlayerCacheSpeed provides VideoPlayerCacheSpeedData(
-            isCaching = isCaching,
+            state = cacheState,
             cacheSpeed = cacheSpeed
         ),
         LocalVideoPlayerDebugInfoData provides VideoPlayerDebugInfoData(
